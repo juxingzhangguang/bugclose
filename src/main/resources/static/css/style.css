@@ -1,0 +1,235 @@
+/* ===== 全局 ===== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+  background: #f4f6f9;
+  color: #333;
+  font-size: 14px;
+}
+.hidden { display: none !important; }
+
+/* ===== 顶栏 ===== */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 24px;
+  height: 56px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.topbar h1 { font-size: 20px; color: #d94f3d; }
+.topbar nav { display: flex; gap: 8px; flex: 1; }
+.nav-btn {
+  border: none;
+  background: transparent;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 6px;
+  color: #555;
+}
+.nav-btn:hover { background: #f0f2f5; }
+.nav-btn.active { background: #d94f3d; color: #fff; }
+
+/* ===== 按钮 ===== */
+.btn {
+  padding: 7px 16px;
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all .15s;
+}
+.btn:hover { border-color: #d94f3d; color: #d94f3d; }
+.btn-primary {
+  background: #d94f3d;
+  border-color: #d94f3d;
+  color: #fff;
+}
+.btn-primary:hover { background: #c2402f; color: #fff; }
+.btn-sm { padding: 3px 10px; font-size: 12px; }
+.btn-danger:hover { border-color: #e02424; color: #e02424; }
+
+/* ===== 视图容器 ===== */
+.view { padding: 20px 24px; max-width: 1280px; margin: 0 auto; }
+
+/* ===== 筛选栏 ===== */
+.filter-bar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: #fff;
+  padding: 14px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.filter-bar input, .filter-bar select {
+  padding: 7px 10px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+}
+.filter-bar input:focus, .filter-bar select:focus { border-color: #d94f3d; }
+#fKeyword { width: 220px; }
+#fAssignee { width: 120px; }
+
+/* ===== 表格 ===== */
+.bug-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.bug-table th, .bug-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #eef0f3;
+}
+.bug-table th { background: #fafbfc; font-weight: 600; color: #555; white-space: nowrap; }
+.bug-table tbody tr:hover { background: #fdf6f5; }
+.bug-title-cell { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty-tip { text-align: center; color: #999; padding: 40px 0; }
+
+/* ===== 标签 ===== */
+.tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.sev-CRITICAL { background: #fde8e8; color: #c81e1e; }
+.sev-HIGH     { background: #fef3e2; color: #c2710c; }
+.sev-MEDIUM   { background: #e8f1fd; color: #1a56db; }
+.sev-LOW      { background: #eef2f5; color: #64748b; }
+
+.pri-URGENT { background: #fde8e8; color: #c81e1e; }
+.pri-HIGH   { background: #fef3e2; color: #c2710c; }
+.pri-MEDIUM { background: #e8f1fd; color: #1a56db; }
+.pri-LOW    { background: #eef2f5; color: #64748b; }
+
+.st-NEW         { background: #e8f1fd; color: #1a56db; }
+.st-IN_PROGRESS { background: #fef3e2; color: #c2710c; }
+.st-RESOLVED    { background: #e6f6ec; color: #05803c; }
+.st-CLOSED      { background: #eef2f5; color: #64748b; }
+
+/* ===== 操作列 ===== */
+.op-cell { white-space: nowrap; display: flex; gap: 6px; }
+
+/* ===== 弹窗 ===== */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: #fff;
+  border-radius: 10px;
+  padding: 24px;
+  width: 520px;
+  max-width: 92vw;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.modal-sm { width: 400px; }
+.modal h2 { font-size: 17px; margin-bottom: 16px; }
+.modal label {
+  display: block;
+  margin-bottom: 12px;
+  font-weight: 600;
+  color: #444;
+}
+.modal input[type=text], .modal textarea, .modal select {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  padding: 8px 10px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 400;
+  font-family: inherit;
+  outline: none;
+}
+.modal input:focus, .modal textarea:focus, .modal select:focus { border-color: #d94f3d; }
+.form-row { display: flex; gap: 14px; }
+.form-row label { flex: 1; }
+.required { color: #e02424; }
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+.trans-info { margin-bottom: 14px; color: #666; }
+
+/* ===== 统计看板 ===== */
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.stat-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 18px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.stat-card .num { font-size: 28px; font-weight: 700; }
+.stat-card .label { color: #777; margin-top: 4px; }
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+.chart-box {
+  background: #fff;
+  border-radius: 8px;
+  padding: 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.chart-box h3 { font-size: 15px; margin-bottom: 14px; color: #444; }
+
+.bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.bar-label { width: 70px; text-align: right; color: #666; font-size: 13px; flex-shrink: 0; }
+.bar-track { flex: 1; background: #f0f2f5; border-radius: 4px; height: 20px; overflow: hidden; }
+.bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #e8705f, #d94f3d);
+  border-radius: 4px;
+  transition: width .4s;
+  min-width: 2px;
+}
+.bar-fill.zero { background: transparent; }
+.bar-count { width: 36px; font-size: 13px; color: #444; }
+
+/* ===== Toast ===== */
+.toast {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(40,40,40,.9);
+  color: #fff;
+  padding: 10px 22px;
+  border-radius: 8px;
+  z-index: 200;
+  font-size: 14px;
+}
+.toast.error { background: rgba(200,30,30,.92); }
