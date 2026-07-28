@@ -1,0 +1,2 @@
+# bugclose
+bug管理
