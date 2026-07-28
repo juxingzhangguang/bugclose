@@ -26,12 +26,15 @@ public class BugService {
         this.bugRepository = bugRepository;
     }
 
-    /** 条件查询：状态/严重程度/优先级/处理人可选，关键字模糊匹配标题和描述 */
+    /** 条件查询：项目/状态/严重程度/优先级/处理人可选，关键字模糊匹配标题和描述 */
     @Transactional(readOnly = true)
-    public List<Bug> search(Bug.BugStatus status, Bug.Severity severity,
+    public List<Bug> search(Long projectId, Bug.BugStatus status, Bug.Severity severity,
                             Bug.Priority priority, String assignee, String keyword) {
         Specification<Bug> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            if (projectId != null) {
+                predicates.add(cb.equal(root.get("projectId"), projectId));
+            }
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
             }
@@ -63,6 +66,7 @@ public class BugService {
 
     public Bug create(Bug bug) {
         bug.setId(null);
+        bug.setSeq(bugRepository.findMaxSeqInProject(bug.getProjectId()) + 1);
         bug.setCreatedAt(LocalDateTime.now());
         bug.setUpdatedAt(LocalDateTime.now());
         if (bug.getStatus() == null) {
@@ -73,12 +77,18 @@ public class BugService {
 
     public Bug update(Long id, Bug changes) {
         Bug bug = findById(id);
+        // 换了项目时重新分配新项目内的序号
+        if (!java.util.Objects.equals(bug.getProjectId(), changes.getProjectId())) {
+            bug.setSeq(bugRepository.findMaxSeqInProject(changes.getProjectId()) + 1);
+        }
+        bug.setProjectId(changes.getProjectId());
         bug.setTitle(changes.getTitle());
         bug.setDescription(changes.getDescription());
         bug.setSeverity(changes.getSeverity());
         bug.setPriority(changes.getPriority());
         bug.setAssignee(changes.getAssignee());
         bug.setReporter(changes.getReporter());
+        bug.setImages(changes.getImages());
         bug.setUpdatedAt(LocalDateTime.now());
         return bugRepository.save(bug);
     }

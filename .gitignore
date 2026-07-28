@@ -7,6 +7,9 @@ target/
 ### H2 数据库文件 ###
 data/
 
+### 上传的图片 ###
+uploads/
+
 ### STS ###
 .apt_generated
 .classpath

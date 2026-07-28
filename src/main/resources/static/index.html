@@ -13,11 +13,30 @@
       <button class="nav-btn active" data-view="list">Bug 列表</button>
       <button class="nav-btn" data-view="dashboard">统计看板</button>
     </nav>
-    <button id="btnNew" class="btn btn-primary">+ 新建 Bug</button>
   </header>
 
-  <!-- Bug 列表视图 -->
-  <main id="viewList" class="view">
+  <!-- Bug 列表视图：左侧项目栏 + 右侧列表，下方项目汇总分析 -->
+  <main id="viewList" class="view view-wide">
+    <div class="view-with-sidebar">
+    <aside class="proj-sidebar">
+      <div class="proj-sidebar-head">
+        <span>项目</span>
+        <button id="btnNewProject" class="proj-add-btn" title="新建项目">＋</button>
+      </div>
+      <ul id="projList" class="proj-list"></ul>
+      <div class="proj-pager">
+        <select id="projPageSize" title="每页条数">
+          <option value="10" selected>10/页</option>
+          <option value="20">20/页</option>
+          <option value="50">50/页</option>
+        </select>
+        <button id="projPrev" title="上一页">‹</button>
+        <span id="projPageInfo">1/1</span>
+        <button id="projNext" title="下一页">›</button>
+      </div>
+    </aside>
+
+    <div class="list-main">
     <section class="filter-bar">
       <input type="text" id="fKeyword" placeholder="搜索标题 / 描述关键字">
       <select id="fStatus">
@@ -44,6 +63,7 @@
       <input type="text" id="fAssignee" placeholder="处理人">
       <button id="btnSearch" class="btn btn-primary">查询</button>
       <button id="btnReset" class="btn">重置</button>
+      <button id="btnNew" class="btn btn-primary">+ 新建 Bug</button>
     </section>
 
     <table class="bug-table">
@@ -51,6 +71,7 @@
         <tr>
           <th>ID</th>
           <th>标题</th>
+          <th>所属项目</th>
           <th>严重程度</th>
           <th>优先级</th>
           <th>状态</th>
@@ -62,7 +83,28 @@
       </thead>
       <tbody id="bugTbody"></tbody>
     </table>
-    <p id="emptyTip" class="empty-tip hidden">暂无数据</p>
+    <div id="bugPager" class="pager"></div>
+    </div>
+    </div>
+
+    <!-- 项目 Bug 汇总分析 -->
+    <section class="proj-summary">
+      <h3>📊 项目 Bug 汇总分析</h3>
+      <div class="chart-grid">
+        <section class="chart-box">
+          <h3>各项目 Bug 数量</h3>
+          <div id="chartProjCount" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目状态构成</h3>
+          <div id="chartProjStatus" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目严重程度构成</h3>
+          <div id="chartProjSeverity" class="bar-chart"></div>
+        </section>
+      </div>
+    </section>
   </main>
 
   <!-- 统计看板视图 -->
@@ -86,12 +128,17 @@
 
   <!-- 新建/编辑弹窗 -->
   <div id="modalMask" class="modal-mask hidden">
-    <div class="modal">
+    <div class="modal modal-lg">
       <h2 id="modalTitle">新建 Bug</h2>
       <form id="bugForm">
         <input type="hidden" id="bugId">
         <label>标题 <span class="required">*</span>
           <input type="text" id="bugTitle" required maxlength="200" placeholder="简要描述问题">
+        </label>
+        <label>所属项目
+          <select id="bugProject">
+            <option value="">未关联项目</option>
+          </select>
         </label>
         <label>详细描述
           <textarea id="bugDesc" rows="4" maxlength="4000" placeholder="复现步骤、期望结果、实际结果"></textarea>
@@ -122,6 +169,15 @@
             <input type="text" id="bugReporter" maxlength="50" placeholder="谁发现的">
           </label>
         </div>
+        <label>Bug 图片（截图/现场照片，可多张，单张≤ 5MB）
+          <input type="file" id="bugImageInput" class="hidden" accept="image/*" multiple>
+          <div id="imageGrid" class="image-grid">
+            <div id="imageAddBox" class="image-add-box" title="点击添加图片">
+              <span class="image-add-icon">+</span>
+              <span class="image-add-text">添加图片</span>
+            </div>
+          </div>
+        </label>
         <div class="modal-actions">
           <button type="button" id="btnCancel" class="btn">取消</button>
           <button type="submit" class="btn btn-primary">保存</button>
@@ -151,7 +207,47 @@
     </div>
   </div>
 
+  <!-- 新建/编辑项目弹窗 -->
+  <div id="projMask" class="modal-mask hidden">
+    <div class="modal">
+      <h2 id="projModalTitle">新建项目</h2>
+      <form id="projForm">
+        <input type="hidden" id="projId">
+        <label>项目名称 <span class="required">*</span>
+          <input type="text" id="projName" required maxlength="100" placeholder="如：商城小程序">
+        </label>
+        <label>项目编号
+          <input type="text" id="projCode" maxlength="20" placeholder="如：MALL，作为 Bug 编号前缀（MALL-1）">
+        </label>
+        <label>项目描述
+          <textarea id="projDesc" rows="3" maxlength="500" placeholder="项目的简要说明（可选）"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="btnProjCancel" class="btn">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Bug 详情弹窗 -->
+  <div id="detailMask" class="modal-mask hidden">
+    <div class="modal modal-lg">
+      <h2 id="detailTitle">Bug 详情</h2>
+      <div id="detailBody" class="detail-body"></div>
+      <div class="modal-actions">
+        <button type="button" id="btnDetailEdit" class="btn">编辑</button>
+        <button type="button" id="btnDetailClose" class="btn btn-primary">关闭</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
+
+  <!-- 图片大图预览 -->
+  <div id="imgPreviewMask" class="modal-mask hidden">
+    <img id="imgPreviewLarge" class="img-preview-large" alt="图片预览">
+  </div>
 
   <script src="js/app.js"></script>
 </body>

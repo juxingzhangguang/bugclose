@@ -30,14 +30,15 @@ public class BugController {
         this.bugService = bugService;
     }
 
-    /** 列表查询（支持筛选与关键字搜索） */
+    /** 列表查询（支持项目筛选、条件筛选与关键字搜索） */
     @GetMapping
-    public List<Bug> list(@RequestParam(required = false) Bug.BugStatus status,
+    public List<Bug> list(@RequestParam(required = false) Long projectId,
+                          @RequestParam(required = false) Bug.BugStatus status,
                           @RequestParam(required = false) Bug.Severity severity,
                           @RequestParam(required = false) Bug.Priority priority,
                           @RequestParam(required = false) String assignee,
                           @RequestParam(required = false) String keyword) {
-        return bugService.search(status, severity, priority, assignee, keyword);
+        return bugService.search(projectId, status, severity, priority, assignee, keyword);
     }
 
     /** 详情 */
