@@ -1,10 +1,28 @@
 /* BugClose 前端逻辑 */
 const API = '/api/bugs';
 const PROJECT_API = '/api/projects';
+const DOC_API = '/api/docs';
 
 const SEVERITY_TEXT = { CRITICAL: '致命', HIGH: '严重', MEDIUM: '一般', LOW: '轻微' };
 const PRIORITY_TEXT = { URGENT: '紧急', HIGH: '高', MEDIUM: '中', LOW: '低' };
 const STATUS_TEXT = { NEW: '新建', IN_PROGRESS: '处理中', RESOLVED: '已解决', CLOSED: '已关闭' };
+const DOC_CATEGORY_TEXT = {
+  REQUIREMENT: '需求文档',
+  DESIGN: '设计文档',
+  TEST: '测试文档',
+  MANUAL: '操作手册',
+  MEETING: '会议纪要',
+  OTHER: '其他',
+};
+/* 文档分类堆叠图配色，与列表分类标签色系一致 */
+const DOC_CATEGORY_COLOR = {
+  REQUIREMENT: '#1a56db',
+  DESIGN: '#7e22ce',
+  TEST: '#05803c',
+  MANUAL: '#c2710c',
+  MEETING: '#e8705f',
+  OTHER: '#64748b',
+};
 /* 堆叠图配色，与列表标签色系一致 */
 const STATUS_COLOR = { NEW: '#1a56db', IN_PROGRESS: '#c2710c', RESOLVED: '#05803c', CLOSED: '#94a3b8' };
 const SEVERITY_COLOR = { CRITICAL: '#c81e1e', HIGH: '#e8705f', MEDIUM: '#1a56db', LOW: '#94a3b8' };
@@ -26,7 +44,9 @@ document.querySelectorAll('.nav-btn').forEach((btn) => {
     const view = btn.dataset.view;
     $('viewList').classList.toggle('hidden', view !== 'list');
     $('viewDashboard').classList.toggle('hidden', view !== 'dashboard');
+    $('viewDocs').classList.toggle('hidden', view !== 'docs');
     if (view === 'dashboard') loadStatistics();
+    else if (view === 'docs') loadDocs();
     else loadBugs();
   });
 });
@@ -81,7 +101,10 @@ async function refreshProjects() {
     selectedProjectId = '';
   }
   renderProjectSidebar();
+  renderDocSidebar();
   fillProjectSelect($('bugProject'), '未关联项目');
+  fillProjectSelect($('docProject'), '未关联项目');
+  fillProjectSelect($('dProject'), '全部项目');
 }
 
 function fillProjectSelect(select, emptyText) {
@@ -91,6 +114,13 @@ function fillProjectSelect(select, emptyText) {
     const opt = document.createElement('option');
     opt.value = p.id;
     opt.textContent = p.name;
+    select.appendChild(opt);
+  }
+  // 无项目时给出提示，避免误以为下拉加载失败
+  if (!projects.length) {
+    const opt = document.createElement('option');
+    opt.disabled = true;
+    opt.textContent = '（暂无项目，可在 Bug 列表左侧＋创建）';
     select.appendChild(opt);
   }
   if ([...select.options].some((o) => o.value === current)) select.value = current;
@@ -107,7 +137,7 @@ function renderProjectSidebar() {
   const pageProjects = projects.slice((projPage - 1) * projPageSize, projPage * projPageSize);
   const items = [
     `<li class="proj-item ${selectedProjectId === '' ? 'active' : ''}" data-id="">
-      <span class="proj-item-name">📋 全部 Bug</span>
+      <span class="proj-item-name">📋 全部项目</span>
     </li>`,
   ];
   for (const p of pageProjects) {
@@ -152,14 +182,7 @@ $('projList').addEventListener('click', async (e) => {
   if (opBtn) {
     const id = Number(opBtn.dataset.id);
     if (opBtn.dataset.op === 'edit') {
-      const p = projects.find((x) => x.id === id);
-      if (!p) return;
-      $('projModalTitle').textContent = `编辑项目 #${id}`;
-      $('projId').value = p.id;
-      $('projName').value = p.name;
-      $('projCode').value = p.code || '';
-      $('projDesc').value = p.description || '';
-      $('projMask').classList.remove('hidden');
+      openProjectEditModal(id);
     } else if (opBtn.dataset.op === 'del') {
       const p = projects.find((x) => x.id === id);
       if (!confirm(`确定删除项目「${p ? p.name : '#' + id}」吗？`)) return;
@@ -181,6 +204,18 @@ $('projList').addEventListener('click', async (e) => {
   renderProjectSidebar();
   loadBugs();
 });
+
+/* 回填项目编辑弹窗（Bug 列表与文档库侧栏共用） */
+function openProjectEditModal(id) {
+  const p = projects.find((x) => x.id === id);
+  if (!p) return;
+  $('projModalTitle').textContent = `编辑项目 #${id}`;
+  $('projId').value = p.id;
+  $('projName').value = p.name;
+  $('projCode').value = p.code || '';
+  $('projDesc').value = p.description || '';
+  $('projMask').classList.remove('hidden');
+}
 
 /* ===== 列表 ===== */
 let allBugs = []; // 当前筛选条件下的全部 Bug，前端分页
@@ -313,16 +348,7 @@ async function loadProjectSummary() {
 
 function renderProjectSummary(bugs) {
   // 按项目分桶，未关联的单独一桶
-  const buckets = new Map();
-  for (const p of projects) buckets.set(p.id, { name: p.name, bugs: [] });
-  const unassigned = { name: '未关联', bugs: [] };
-  for (const bug of bugs) {
-    const b = buckets.get(bug.projectId);
-    if (b) b.bugs.push(bug);
-    else unassigned.bugs.push(bug);
-  }
-  const rows = [...buckets.values()];
-  if (unassigned.bugs.length) rows.push(unassigned);
+  const rows = bucketByProject(bugs, '未关联');
 
   if (!rows.length) {
     ['chartProjCount', 'chartProjStatus', 'chartProjSeverity'].forEach((id) => {
@@ -332,26 +358,41 @@ function renderProjectSummary(bugs) {
   }
 
   const countMap = {};
-  for (const r of rows) countMap[r.name] = r.bugs.length;
+  for (const r of rows) countMap[r.name] = r.items.length;
   renderBarChart('chartProjCount', countMap, null);
   renderStackChart('chartProjStatus', rows, 'status', STATUS_TEXT, STATUS_COLOR);
   renderStackChart('chartProjSeverity', rows, 'severity', SEVERITY_TEXT, SEVERITY_COLOR);
 }
 
-/* 堆叠条形图：条长按项目 Bug 总量，条内按维度占比分段着色 */
+/* 把一组带 projectId 的记录按项目分桶，未关联的单独一桶 */
+function bucketByProject(list, unassignedName) {
+  const buckets = new Map();
+  for (const p of projects) buckets.set(p.id, { name: p.name, items: [] });
+  const unassigned = { name: unassignedName, items: [] };
+  for (const item of list) {
+    const b = buckets.get(item.projectId);
+    if (b) b.items.push(item);
+    else unassigned.items.push(item);
+  }
+  const rows = [...buckets.values()];
+  if (unassigned.items.length) rows.push(unassigned);
+  return rows;
+}
+
+/* 堆叠条形图：条长按项目记录总量，条内按维度占比分段着色 */
 function renderStackChart(containerId, rows, field, textMap, colorMap) {
   const keys = Object.keys(textMap);
-  const maxTotal = Math.max(...rows.map((r) => r.bugs.length), 1);
+  const maxTotal = Math.max(...rows.map((r) => r.items.length), 1);
   const legend = `<div class="stack-legend">${keys
     .map((k) => `<span><i class="legend-dot" style="background:${colorMap[k]}"></i>${textMap[k]}</span>`)
     .join('')}</div>`;
   const body = rows
     .map((r) => {
-      const total = r.bugs.length;
+      const total = r.items.length;
       const fillPct = ((total / maxTotal) * 100).toFixed(1);
       const segs = keys
         .map((k) => {
-          const n = r.bugs.filter((b) => b[field] === k).length;
+          const n = r.items.filter((b) => b[field] === k).length;
           if (!n) return '';
           return `<span class="stack-seg" style="width:${((n / total) * 100).toFixed(2)}%;background:${colorMap[k]}" title="${textMap[k]}：${n}"></span>`;
         })
@@ -421,6 +462,8 @@ async function openEditModal(id) {
     $('bugPriority').value = bug.priority;
     $('bugAssignee').value = bug.assignee || '';
     $('bugReporter').value = bug.reporter || '';
+    $('bugEnvironment').value = bug.environment || '';
+    $('bugModule').value = bug.module || '';
     setFormImages(parseImages(bug.images));
     $('modalMask').classList.remove('hidden');
   } catch (e) {
@@ -441,6 +484,8 @@ $('bugForm').addEventListener('submit', async (e) => {
     priority: $('bugPriority').value,
     assignee: $('bugAssignee').value.trim(),
     reporter: $('bugReporter').value.trim(),
+    environment: $('bugEnvironment').value.trim(),
+    module: $('bugModule').value.trim(),
     images: JSON.stringify(formImages),
   };
   try {
@@ -561,6 +606,8 @@ async function openDetailModal(id) {
         <span class="tag sev-${bug.severity}">${SEVERITY_TEXT[bug.severity]}</span>
         <span class="tag pri-${bug.priority}">优先级：${PRIORITY_TEXT[bug.priority]}</span>
       </span></div>
+      <div class="detail-row"><span class="detail-label">影响环境</span><span class="detail-value">${bug.environment ? escapeHtml(bug.environment) : '<span class="detail-empty">未填写</span>'}</span></div>
+      <div class="detail-row"><span class="detail-label">影响模块</span><span class="detail-value">${bug.module ? escapeHtml(bug.module) : '<span class="detail-empty">未填写</span>'}</span></div>
       <div class="detail-row"><span class="detail-label">处理人</span><span class="detail-value">${escapeHtml(bug.assignee || '未指派')}</span></div>
       <div class="detail-row"><span class="detail-label">报告人</span><span class="detail-value">${escapeHtml(bug.reporter || '-')}</span></div>
       <div class="detail-row"><span class="detail-label">创建时间</span><span class="detail-value">${formatTime(bug.createdAt)}</span></div>
@@ -659,6 +706,8 @@ $('projForm').addEventListener('submit', async (e) => {
     $('projMask').classList.add('hidden');
     await refreshProjects();
     loadBugs();
+    // 文档库视图打开时同步刷新文档列表（项目名、侧栏计数）
+    if (!$('viewDocs').classList.contains('hidden')) loadDocs();
   } catch (err) {
     showToast(err.message, true);
   }
@@ -710,6 +759,413 @@ function renderBarChart(containerId, dataMap, textMap) {
       </div>`;
     })
     .join('');
+}
+
+/* ===== 文档库 ===== */
+let allDocs = []; // 当前筛选条件下的文档列表，前端分页
+let docPage = 1;
+let docPageSize = 10;
+
+async function loadDocs() {
+  const params = new URLSearchParams();
+  if ($('dProject').value) params.set('projectId', $('dProject').value);
+  if ($('dCategory').value) params.set('category', $('dCategory').value);
+  if ($('dKeyword').value.trim()) params.set('keyword', $('dKeyword').value.trim());
+  try {
+    allDocs = await request(`${DOC_API}?${params.toString()}`);
+    renderDocs();
+  } catch (e) {
+    showToast(e.message, true);
+  }
+  loadDocSummary();
+}
+
+/* 文档汇总分析（文档列表下方图表，全量数据不受筛选影响） */
+async function loadDocSummary() {
+  try {
+    const docs = await request(DOC_API);
+    renderDocSummary(docs);
+  } catch {
+    /* 汇总失败不影响列表 */
+  }
+}
+
+function renderDocSummary(docs) {
+  // 按分类汇总，六类全部列出便于对比
+  const catMap = {};
+  for (const k of Object.keys(DOC_CATEGORY_TEXT)) catMap[k] = 0;
+  for (const d of docs) catMap[d.category] = (catMap[d.category] || 0) + 1;
+  renderBarChart('chartDocCategory', catMap, DOC_CATEGORY_TEXT);
+
+  // 同步左侧项目栏的文档计数
+  docCountByProject = new Map();
+  for (const d of docs) {
+    docCountByProject.set(d.projectId, (docCountByProject.get(d.projectId) || 0) + 1);
+  }
+  renderDocSidebar();
+
+  // 按项目汇总
+  const rows = bucketByProject(docs, '未关联');
+  if (!rows.length) {
+    ['chartDocProjCount', 'chartDocProjCategory'].forEach((id) => {
+      $(id).innerHTML = '<p class="chart-empty">暂无数据</p>';
+    });
+    return;
+  }
+  const countMap = {};
+  for (const r of rows) countMap[r.name] = r.items.length;
+  renderBarChart('chartDocProjCount', countMap, null);
+  renderStackChart('chartDocProjCategory', rows, 'category', DOC_CATEGORY_TEXT, DOC_CATEGORY_COLOR);
+}
+
+/* ===== 文档库左侧项目栏（与 Bug 列表同款布局，计数为文档数） ===== */
+let docProjPage = 1;
+let docProjPageSize = 10;
+let docCountByProject = new Map(); // projectId -> 文档数
+
+function renderDocSidebar() {
+  const list = $('docProjList');
+  const totalPages = Math.max(1, Math.ceil(projects.length / docProjPageSize));
+  if (docProjPage > totalPages) docProjPage = totalPages;
+  const pageProjects = projects.slice((docProjPage - 1) * docProjPageSize, docProjPage * docProjPageSize);
+  const selected = $('dProject').value;
+  const items = [
+    `<li class="proj-item ${selected === '' ? 'active' : ''}" data-id="">
+      <span class="proj-item-name">📋 全部项目</span>
+    </li>`,
+  ];
+  for (const p of pageProjects) {
+    const active = selected === String(p.id);
+    const count = docCountByProject.get(p.id) || 0;
+    items.push(`
+      <li class="proj-item ${active ? 'active' : ''}" data-id="${p.id}" title="${escapeHtml(p.description || p.name)}">
+        <span class="proj-item-name">${escapeHtml(p.name)}</span>
+        <span class="proj-item-count ${count === 0 ? 'zero' : ''}">${count}</span>
+        <span class="proj-item-ops">
+          <button data-op="edit" data-id="${p.id}" title="编辑项目">✎</button>
+          <button data-op="del" data-id="${p.id}" title="删除项目">×</button>
+        </span>
+      </li>`);
+  }
+  if (!projects.length) {
+    items.push('<li class="proj-list-empty">暂无项目，点上方＋创建</li>');
+  }
+  list.innerHTML = items.join('');
+  // 不满一页时也保持固定高度（1 个「全部项目」+ 每页项目位）
+  list.style.minHeight = `${(docProjPageSize + 1) * 37 + 16}px`;
+  $('docProjPageInfo').textContent = `${docProjPage}/${totalPages}`;
+  $('docProjPrev').disabled = docProjPage <= 1;
+  $('docProjNext').disabled = docProjPage >= totalPages;
+}
+
+$('docProjPrev').addEventListener('click', () => {
+  docProjPage--;
+  renderDocSidebar();
+});
+$('docProjNext').addEventListener('click', () => {
+  docProjPage++;
+  renderDocSidebar();
+});
+$('docProjPageSize').addEventListener('change', (e) => {
+  docProjPageSize = Number(e.target.value);
+  docProjPage = 1;
+  renderDocSidebar();
+});
+
+$('btnDocNewProject').addEventListener('click', () => {
+  $('projModalTitle').textContent = '新建项目';
+  $('projForm').reset();
+  $('projId').value = '';
+  $('projMask').classList.remove('hidden');
+});
+
+$('docProjList').addEventListener('click', async (e) => {
+  const opBtn = e.target.closest('button[data-op]');
+  if (opBtn) {
+    const id = Number(opBtn.dataset.id);
+    if (opBtn.dataset.op === 'edit') {
+      openProjectEditModal(id);
+    } else if (opBtn.dataset.op === 'del') {
+      const p = projects.find((x) => x.id === id);
+      if (!confirm(`确定删除项目「${p ? p.name : '#' + id}」吗？`)) return;
+      try {
+        await request(`${PROJECT_API}/${id}`, { method: 'DELETE' });
+        showToast('删除成功');
+        await refreshProjects();
+        loadDocs();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+    return;
+  }
+  // 点击项目项 → 切换文档筛选（与筛选栏下拉联动）
+  const item = e.target.closest('.proj-item');
+  if (!item) return;
+  $('dProject').value = item.dataset.id;
+  docPage = 1;
+  renderDocSidebar();
+  loadDocs();
+});
+
+function renderDocs() {
+  const tbody = $('docTbody');
+  tbody.innerHTML = '';
+  const totalPages = Math.max(1, Math.ceil(allDocs.length / docPageSize));
+  if (docPage > totalPages) docPage = totalPages;
+  const pageDocs = allDocs.slice((docPage - 1) * docPageSize, docPage * docPageSize);
+  pageDocs.forEach((doc, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="seq-col">${(docPage - 1) * docPageSize + idx + 1}</td>
+      <td class="bug-title-cell" title="${escapeHtml(doc.description || '')}">📄 ${escapeHtml(doc.title)}</td>
+      <td>${doc.projectId != null ? `<span class="tag proj-tag">${escapeHtml(doc.projectName || projectName(doc.projectId))}</span>` : '<span class="detail-empty">未关联</span>'}</td>
+      <td><span class="tag doc-cat-${doc.category}">${DOC_CATEGORY_TEXT[doc.category] || doc.category}</span></td>
+      <td>v${doc.latestVersionNo}</td>
+      <td>${formatSize(doc.latestFileSize)}</td>
+      <td>${escapeHtml(doc.latestUploader || doc.uploader || '-')}</td>
+      <td>${formatTime(doc.updatedAt)}</td>
+      <td class="op-cell">
+        <button class="btn btn-sm" data-op="download" data-id="${doc.id}">下载</button>
+        <button class="btn btn-sm" data-op="newver" data-id="${doc.id}">更新版本</button>
+        <button class="btn btn-sm" data-op="history" data-id="${doc.id}">历史</button>
+        <button class="btn btn-sm" data-op="edit" data-id="${doc.id}">编辑</button>
+        <button class="btn btn-sm btn-danger" data-op="del" data-id="${doc.id}">删除</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+  if (!allDocs.length) {
+    const tr = document.createElement('tr');
+    tr.className = 'empty-row';
+    tr.innerHTML = '<td colspan="9">暂无文档，点右上方「+ 上传文档」归档</td>';
+    tbody.appendChild(tr);
+  }
+  // 不满一页时用空行补齐，保持表格高度固定
+  const rendered = pageDocs.length + (allDocs.length ? 0 : 1);
+  for (let i = rendered; i < docPageSize; i++) {
+    const tr = document.createElement('tr');
+    tr.className = 'filler-row';
+    tr.innerHTML = '<td colspan="9">&nbsp;</td>';
+    tbody.appendChild(tr);
+  }
+
+  renderDocPager(totalPages);
+}
+
+/* 文档列表分页栏 */
+function renderDocPager(totalPages) {
+  const nums = pageNumbers(docPage, totalPages)
+    .map((n) =>
+      n === '…'
+        ? '<span class="pager-ellipsis">…</span>'
+        : `<button class="pager-btn ${n === docPage ? 'active' : ''}" data-page="${n}">${n}</button>`
+    )
+    .join('');
+  $('docPager').innerHTML = `
+    <span class="pager-total">共 ${allDocs.length} 条</span>
+    <select id="docPageSize" class="pager-size">
+      ${[10, 20, 50].map((s) => `<option value="${s}" ${s === docPageSize ? 'selected' : ''}>${s} 条/页</option>`).join('')}
+    </select>
+    <button class="pager-btn" data-page="${docPage - 1}" ${docPage <= 1 ? 'disabled' : ''}>上一页</button>
+    ${nums}
+    <button class="pager-btn" data-page="${docPage + 1}" ${docPage >= totalPages ? 'disabled' : ''}>下一页</button>`;
+}
+
+$('docPager').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-page]');
+  if (!btn || btn.disabled) return;
+  docPage = Number(btn.dataset.page);
+  renderDocs();
+});
+$('docPager').addEventListener('change', (e) => {
+  if (e.target.id === 'docPageSize') {
+    docPageSize = Number(e.target.value);
+    docPage = 1;
+    renderDocs();
+  }
+});
+
+$('btnDocSearch').addEventListener('click', loadDocs);
+$('btnDocReset').addEventListener('click', () => {
+  $('dKeyword').value = '';
+  $('dProject').value = '';
+  $('dCategory').value = '';
+  loadDocs();
+});
+$('dKeyword').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') loadDocs();
+});
+
+/* 文档列表操作 */
+$('docTbody').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-op]');
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  const doc = allDocs.find((d) => d.id === id);
+  if (!doc) return;
+  const op = btn.dataset.op;
+  if (op === 'download') {
+    if (doc.latestVersionId == null) return showToast('暂无可下载文件', true);
+    window.open(`${DOC_API}/${id}/versions/${doc.latestVersionId}/download`, '_blank');
+  } else if (op === 'newver') {
+    $('docVerDocId').value = id;
+    $('docVerInfo').textContent = `「${doc.title}」当前版本：v${doc.latestVersionNo}，上传后将升级为 v${doc.latestVersionNo + 1}`;
+    $('docVerForm').reset();
+    $('docVerMask').classList.remove('hidden');
+  } else if (op === 'history') {
+    openDocHistory(doc);
+  } else if (op === 'edit') {
+    $('docModalTitle').textContent = `编辑文档「${doc.title}」`;
+    $('docForm').reset();
+    $('docId').value = doc.id;
+    $('docTitle').value = doc.title;
+    $('docProject').value = doc.projectId != null ? String(doc.projectId) : '';
+    $('docCategory').value = doc.category;
+    $('docDesc').value = doc.description || '';
+    // 编辑仅改元信息，隐藏文件与上传人项（换文件请走「更新版本」）
+    $('docFileLabel').classList.add('hidden');
+    $('docUploaderLabel').classList.add('hidden');
+    $('docMask').classList.remove('hidden');
+  } else if (op === 'del') {
+    if (!confirm(`确定删除文档「${doc.title}」及其全部 ${doc.latestVersionNo} 个版本吗？`)) return;
+    try {
+      await request(`${DOC_API}/${id}`, { method: 'DELETE' });
+      showToast('删除成功');
+      loadDocs();
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  }
+});
+
+/* 上传文档弹窗 */
+$('btnDocNew').addEventListener('click', () => {
+  $('docModalTitle').textContent = '上传文档';
+  $('docForm').reset();
+  $('docId').value = '';
+  $('docProject').value = $('dProject').value; // 默认带入当前筛选的项目
+  $('docFileLabel').classList.remove('hidden');
+  $('docUploaderLabel').classList.remove('hidden');
+  $('docMask').classList.remove('hidden');
+});
+
+$('btnDocCancel').addEventListener('click', () => $('docMask').classList.add('hidden'));
+
+/* 选文件后自动带入文件名作为文档名称 */
+$('docFile').addEventListener('change', () => {
+  const file = $('docFile').files[0];
+  if (file && !$('docTitle').value.trim()) {
+    $('docTitle').value = file.name.replace(/\.[^.]+$/, '');
+  }
+});
+
+$('docForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('docId').value;
+  try {
+    if (id) {
+      // 编辑元信息
+      const payload = {
+        title: $('docTitle').value.trim(),
+        category: $('docCategory').value,
+        projectId: $('docProject').value ? Number($('docProject').value) : null,
+        description: $('docDesc').value.trim(),
+      };
+      await request(`${DOC_API}/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      showToast('更新成功');
+    } else {
+      // 新上传：multipart
+      const file = $('docFile').files[0];
+      if (!file) return showToast('请选择文档文件', true);
+      if (file.size > 50 * 1024 * 1024) return showToast('文件不能超过 50MB', true);
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('title', $('docTitle').value.trim());
+      fd.append('category', $('docCategory').value);
+      if ($('docProject').value) fd.append('projectId', $('docProject').value);
+      if ($('docDesc').value.trim()) fd.append('description', $('docDesc').value.trim());
+      if ($('docUploader').value.trim()) fd.append('uploader', $('docUploader').value.trim());
+      await uploadRequest(DOC_API, fd);
+      showToast('上传成功');
+    }
+    $('docMask').classList.add('hidden');
+    loadDocs();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+/* 更新版本弹窗 */
+$('btnDocVerCancel').addEventListener('click', () => $('docVerMask').classList.add('hidden'));
+
+$('docVerForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('docVerDocId').value;
+  const file = $('docVerFile').files[0];
+  if (!file) return showToast('请选择新版本文件', true);
+  if (file.size > 50 * 1024 * 1024) return showToast('文件不能超过 50MB', true);
+  const fd = new FormData();
+  fd.append('file', file);
+  if ($('docVerRemark').value.trim()) fd.append('remark', $('docVerRemark').value.trim());
+  if ($('docVerUploader').value.trim()) fd.append('uploader', $('docVerUploader').value.trim());
+  try {
+    await uploadRequest(`${DOC_API}/${id}/versions`, fd);
+    showToast('新版本上传成功');
+    $('docVerMask').classList.add('hidden');
+    loadDocs();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+/* 版本历史弹窗 */
+async function openDocHistory(doc) {
+  try {
+    const versions = await request(`${DOC_API}/${doc.id}/versions`);
+    $('docHisTitle').textContent = `「${doc.title}」版本历史`;
+    $('docHisTbody').innerHTML = versions
+      .map(
+        (v) => `<tr>
+          <td>v${v.versionNo}${v.versionNo === doc.latestVersionNo ? ' <span class="tag doc-latest">最新</span>' : ''}</td>
+          <td class="bug-title-cell">${escapeHtml(v.originalFilename)}</td>
+          <td>${formatSize(v.fileSize)}</td>
+          <td>${escapeHtml(v.remark || '-')}</td>
+          <td>${escapeHtml(v.uploader || '-')}</td>
+          <td>${formatTime(v.createdAt)}</td>
+          <td class="op-cell"><button class="btn btn-sm" data-ver="${v.id}" data-doc="${doc.id}">下载</button></td>
+        </tr>`
+      )
+      .join('');
+    $('docHisMask').classList.remove('hidden');
+  } catch (e) {
+    showToast(e.message, true);
+  }
+}
+
+$('btnDocHisClose').addEventListener('click', () => $('docHisMask').classList.add('hidden'));
+
+$('docHisTbody').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-ver]');
+  if (!btn) return;
+  window.open(`${DOC_API}/${btn.dataset.doc}/versions/${btn.dataset.ver}/download`, '_blank');
+});
+
+/* multipart 上传请求（不能带 JSON Content-Type） */
+async function uploadRequest(url, formData) {
+  const resp = await fetch(url, { method: 'POST', body: formData });
+  const data = await resp.json().catch(() => null);
+  if (!resp.ok) {
+    throw new Error((data && data.error) || `上传失败 (${resp.status})`);
+  }
+  return data;
+}
+
+/* 文件大小友好显示 */
+function formatSize(bytes) {
+  if (bytes == null) return '-';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 /* ===== 工具 ===== */

@@ -11,6 +11,7 @@
     <h1>🐞 BugClose</h1>
     <nav>
       <button class="nav-btn active" data-view="list">Bug 列表</button>
+      <button class="nav-btn" data-view="docs">文档库</button>
       <button class="nav-btn" data-view="dashboard">统计看板</button>
     </nav>
   </header>
@@ -87,9 +88,9 @@
     </div>
     </div>
 
-    <!-- 项目 Bug 汇总分析 -->
-    <section class="proj-summary">
-      <h3>📊 项目 Bug 汇总分析</h3>
+    <!-- 项目 Bug 汇总分析（默认折叠，避免撑高页面） -->
+    <details class="proj-summary">
+      <summary>📊 项目 Bug 汇总分析<span class="summary-hint">点击展开 / 收起</span></summary>
       <div class="chart-grid">
         <section class="chart-box">
           <h3>各项目 Bug 数量</h3>
@@ -104,7 +105,7 @@
           <div id="chartProjSeverity" class="bar-chart"></div>
         </section>
       </div>
-    </section>
+    </details>
   </main>
 
   <!-- 统计看板视图 -->
@@ -126,6 +127,87 @@
     </div>
   </main>
 
+  <!-- 文档库视图 -->
+  <main id="viewDocs" class="view view-wide hidden">
+    <div class="view-with-sidebar">
+    <aside class="proj-sidebar">
+      <div class="proj-sidebar-head">
+        <span>项目</span>
+        <button id="btnDocNewProject" class="proj-add-btn" title="新建项目">＋</button>
+      </div>
+      <ul id="docProjList" class="proj-list"></ul>
+      <div class="proj-pager">
+        <select id="docProjPageSize" title="每页条数">
+          <option value="10" selected>10/页</option>
+          <option value="20">20/页</option>
+          <option value="50">50/页</option>
+        </select>
+        <button id="docProjPrev" title="上一页">‹</button>
+        <span id="docProjPageInfo">1/1</span>
+        <button id="docProjNext" title="下一页">›</button>
+      </div>
+    </aside>
+
+    <div class="list-main">
+    <section class="filter-bar">
+      <input type="text" id="dKeyword" placeholder="搜索文档名称 / 说明关键字">
+      <select id="dProject">
+        <option value="">全部项目</option>
+      </select>
+      <select id="dCategory">
+        <option value="">全部分类</option>
+        <option value="REQUIREMENT">需求文档</option>
+        <option value="DESIGN">设计文档</option>
+        <option value="TEST">测试文档</option>
+        <option value="MANUAL">操作手册</option>
+        <option value="MEETING">会议纪要</option>
+        <option value="OTHER">其他</option>
+      </select>
+      <button id="btnDocSearch" class="btn btn-primary">查询</button>
+      <button id="btnDocReset" class="btn">重置</button>
+      <button id="btnDocNew" class="btn btn-primary">+ 上传文档</button>
+    </section>
+
+    <table class="bug-table">
+      <thead>
+        <tr>
+          <th class="seq-col">序号</th>
+          <th>文档名称</th>
+          <th>所属项目</th>
+          <th>分类</th>
+          <th>最新版本</th>
+          <th>文件大小</th>
+          <th>上传人</th>
+          <th>更新时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="docTbody"></tbody>
+    </table>
+    <div id="docPager" class="pager"></div>
+    </div>
+    </div>
+
+    <!-- 文档汇总分析（默认折叠，避免撑高页面） -->
+    <details class="proj-summary">
+      <summary>📊 文档汇总分析<span class="summary-hint">点击展开 / 收起</span></summary>
+      <div class="chart-grid">
+        <section class="chart-box">
+          <h3>按分类分布</h3>
+          <div id="chartDocCategory" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目文档数量</h3>
+          <div id="chartDocProjCount" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目分类构成</h3>
+          <div id="chartDocProjCategory" class="bar-chart"></div>
+        </section>
+      </div>
+    </details>
+  </main>
+
   <!-- 新建/编辑弹窗 -->
   <div id="modalMask" class="modal-mask hidden">
     <div class="modal modal-lg">
@@ -143,6 +225,14 @@
         <label>详细描述
           <textarea id="bugDesc" rows="4" maxlength="4000" placeholder="复现步骤、期望结果、实际结果"></textarea>
         </label>
+        <div class="form-row">
+          <label>影响环境 <span class="required">*</span>
+            <input type="text" id="bugEnvironment" required maxlength="100" placeholder="如：生产环境、测试环境、UAT">
+          </label>
+          <label>影响模块 <span class="required">*</span>
+            <input type="text" id="bugModule" required maxlength="100" placeholder="如：登录模块、订单中心">
+          </label>
+        </div>
         <div class="form-row">
           <label>严重程度
             <select id="bugSeverity">
@@ -243,6 +333,97 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
+
+  <!-- 上传/编辑文档弹窗 -->
+  <div id="docMask" class="modal-mask hidden">
+    <div class="modal">
+      <h2 id="docModalTitle">上传文档</h2>
+      <form id="docForm">
+        <input type="hidden" id="docId">
+        <label id="docFileLabel">文档文件 <span class="required">*</span>（单个≤ 50MB）
+          <input type="file" id="docFile" accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.txt,.md,.zip,.rar,.7z,.png,.jpg">
+        </label>
+        <label>文档名称 <span class="required">*</span>
+          <input type="text" id="docTitle" required maxlength="200" placeholder="默认取文件名，可修改">
+        </label>
+        <div class="form-row">
+          <label>所属项目
+            <select id="docProject">
+              <option value="">未关联项目</option>
+            </select>
+          </label>
+          <label>分类
+            <select id="docCategory">
+              <option value="REQUIREMENT">需求文档</option>
+              <option value="DESIGN">设计文档</option>
+              <option value="TEST">测试文档</option>
+              <option value="MANUAL">操作手册</option>
+              <option value="MEETING">会议纪要</option>
+              <option value="OTHER" selected>其他</option>
+            </select>
+          </label>
+        </div>
+        <label>文档说明
+          <textarea id="docDesc" rows="3" maxlength="1000" placeholder="文档内容的简要说明（可选）"></textarea>
+        </label>
+        <label id="docUploaderLabel">上传人
+          <input type="text" id="docUploader" maxlength="50" placeholder="谁上传的">
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="btnDocCancel" class="btn">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 更新版本弹窗 -->
+  <div id="docVerMask" class="modal-mask hidden">
+    <div class="modal">
+      <h2>更新版本</h2>
+      <p id="docVerInfo" class="trans-info"></p>
+      <form id="docVerForm">
+        <input type="hidden" id="docVerDocId">
+        <label>新版本文件 <span class="required">*</span>（单个≤ 50MB）
+          <input type="file" id="docVerFile" accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.txt,.md,.zip,.rar,.7z,.png,.jpg" required>
+        </label>
+        <label>版本说明
+          <input type="text" id="docVerRemark" maxlength="500" placeholder="本次更新了什么（可选）">
+        </label>
+        <label>上传人
+          <input type="text" id="docVerUploader" maxlength="50" placeholder="谁上传的">
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="btnDocVerCancel" class="btn">取消</button>
+          <button type="submit" class="btn btn-primary">上传新版本</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 版本历史弹窗 -->
+  <div id="docHisMask" class="modal-mask hidden">
+    <div class="modal modal-lg">
+      <h2 id="docHisTitle">版本历史</h2>
+      <table class="bug-table doc-his-table">
+        <thead>
+          <tr>
+            <th>版本</th>
+            <th>文件名</th>
+            <th>大小</th>
+            <th>版本说明</th>
+            <th>上传人</th>
+            <th>上传时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="docHisTbody"></tbody>
+      </table>
+      <div class="modal-actions">
+        <button type="button" id="btnDocHisClose" class="btn btn-primary">关闭</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 图片大图预览 -->
   <div id="imgPreviewMask" class="modal-mask hidden">

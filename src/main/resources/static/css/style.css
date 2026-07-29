@@ -57,7 +57,7 @@ body {
 
 /* ===== 视图容器 ===== */
 .view { padding: 20px 24px; max-width: 1280px; margin: 0 auto; }
-.view-wide { max-width: 1440px; }
+.view-wide { max-width: 1720px; }
 
 /* Bug 列表：左侧项目栏 + 右侧列表（两列等高拉伸，底部对齐） */
 .view-with-sidebar { display: flex; gap: 16px; align-items: stretch; }
@@ -106,7 +106,8 @@ body {
 .bug-table tbody tr:hover { background: #fdf6f5; }
 .bug-table tbody tr.filler-row:hover, .bug-table tbody tr.empty-row:hover { background: transparent; }
 .empty-row td { text-align: center; color: #999; }
-.bug-title-cell { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bug-title-cell { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seq-col { width: 56px; text-align: center; color: #888; }
 .empty-tip { text-align: center; color: #999; padding: 40px 0; }
 
 /* ===== 分页栏 ===== */
@@ -173,9 +174,21 @@ body {
 .proj-count { background: #e8f1fd; color: #1a56db; font-weight: 600; }
 .proj-count.zero { background: #eef2f5; color: #94a3b8; font-weight: 400; }
 
+/* 文档库：分类标签配色 */
+.doc-cat-REQUIREMENT { background: #e8f1fd; color: #1a56db; }
+.doc-cat-DESIGN      { background: #f3e8fd; color: #7e22ce; }
+.doc-cat-TEST        { background: #e6f7ee; color: #05803c; }
+.doc-cat-MANUAL      { background: #fef3e2; color: #c2710c; }
+.doc-cat-MEETING     { background: #fdf0e8; color: #b45309; }
+.doc-cat-OTHER       { background: #eef2f5; color: #64748b; }
+
+/* 版本历史：最新版本标记与弹窗内表格 */
+.doc-latest { background: #e6f7ee; color: #05803c; font-size: 12px; }
+.doc-his-table { margin-top: 12px; }
+
 /* ===== 左侧项目栏 ===== */
 .proj-sidebar {
-  width: 210px;
+  width: 260px;
   flex-shrink: 0;
   background: #fff;
   border-radius: 8px;
@@ -490,9 +503,26 @@ body {
 .bar-fill.zero { background: transparent; }
 .bar-count { width: 36px; font-size: 13px; color: #444; }
 
-/* ===== 项目 Bug 汇总分析 ===== */
+/* ===== 项目 Bug 汇总分析（可折叠，默认收起避免撑高页面） ===== */
 .proj-summary { margin-top: 16px; }
-.proj-summary > h3 { font-size: 15px; color: #444; margin-bottom: 12px; }
+.proj-summary > summary {
+  font-size: 15px;
+  color: #444;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  padding: 10px 14px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  list-style: none;
+}
+.proj-summary > summary::-webkit-details-marker { display: none; }
+.proj-summary > summary::before { content: '▸'; margin-right: 8px; color: #999; transition: transform .15s; display: inline-block; }
+.proj-summary[open] > summary::before { transform: rotate(90deg); }
+.proj-summary > summary:hover { color: #1a56db; }
+.proj-summary .summary-hint { font-size: 12px; font-weight: 400; color: #aaa; margin-left: 10px; }
+.proj-summary[open] > summary { margin-bottom: 12px; }
 .stack-legend {
   display: flex;
   flex-wrap: wrap;

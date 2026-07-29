@@ -87,6 +87,8 @@ public class BugService {
         bug.setSeverity(changes.getSeverity());
         bug.setPriority(changes.getPriority());
         bug.setAssignee(changes.getAssignee());
+        bug.setEnvironment(changes.getEnvironment());
+        bug.setModule(changes.getModule());
         bug.setReporter(changes.getReporter());
         bug.setImages(changes.getImages());
         bug.setUpdatedAt(LocalDateTime.now());

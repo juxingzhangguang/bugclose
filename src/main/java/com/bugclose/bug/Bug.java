@@ -58,6 +58,14 @@ public class Bug {
     @Column(length = 50)
     private String assignee;
 
+    /** 影响环境（自定义输入，如：生产环境、测试环境） */
+    @Column(length = 100)
+    private String environment;
+
+    /** 影响模块（自定义输入；列名避开 SQL 关键字 module） */
+    @Column(name = "module_name", length = 100)
+    private String module;
+
     /** 报告人 */
     @Column(length = 50)
     private String reporter;
@@ -155,6 +163,22 @@ public class Bug {
 
     public void setAssignee(String assignee) {
         this.assignee = assignee;
+    }
+
+    public String getEnvironment() {
+        return environment;
+    }
+
+    public void setEnvironment(String environment) {
+        this.environment = environment;
+    }
+
+    public String getModule() {
+        return module;
+    }
+
+    public void setModule(String module) {
+        this.module = module;
     }
 
     public String getReporter() {
