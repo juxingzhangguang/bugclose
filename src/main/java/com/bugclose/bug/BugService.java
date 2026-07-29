@@ -65,6 +65,7 @@ public class BugService {
     }
 
     public Bug create(Bug bug) {
+        validateRequired(bug);
         bug.setId(null);
         bug.setSeq(bugRepository.findMaxSeqInProject(bug.getProjectId()) + 1);
         bug.setCreatedAt(LocalDateTime.now());
@@ -76,6 +77,7 @@ public class BugService {
     }
 
     public Bug update(Long id, Bug changes) {
+        validateRequired(changes);
         Bug bug = findById(id);
         // 换了项目时重新分配新项目内的序号
         if (!java.util.Objects.equals(bug.getProjectId(), changes.getProjectId())) {
@@ -146,6 +148,22 @@ public class BugService {
         result.put("bySeverity", bySeverity);
         result.put("byAssignee", byAssignee);
         return result;
+    }
+
+    /** 必填字段校验：与前端表单一致，防止直接调接口绕过 */
+    private void validateRequired(Bug bug) {
+        if (bug.getTitle() == null || bug.getTitle().isBlank()) {
+            throw new IllegalStateException("标题不能为空");
+        }
+        if (bug.getEnvironment() == null || bug.getEnvironment().isBlank()) {
+            throw new IllegalStateException("影响环境不能为空");
+        }
+        if (bug.getModule() == null || bug.getModule().isBlank()) {
+            throw new IllegalStateException("影响模块不能为空");
+        }
+        bug.setTitle(bug.getTitle().trim());
+        bug.setEnvironment(bug.getEnvironment().trim());
+        bug.setModule(bug.getModule().trim());
     }
 
     /** 合法流转规则：允许相邻推进、驳回重开（RESOLVED/CLOSED → IN_PROGRESS） */
