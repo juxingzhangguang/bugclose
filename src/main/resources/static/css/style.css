@@ -186,6 +186,50 @@ body {
 .doc-latest { background: #e6f7ee; color: #05803c; font-size: 12px; }
 .doc-his-table { margin-top: 12px; }
 
+/* 测试用例：执行状态标签配色 */
+.cs-NOT_RUN { background: #eef2f5; color: #64748b; }
+.cs-PASS    { background: #e6f7ee; color: #05803c; }
+.cs-FAIL    { background: #fde8e8; color: #c81e1e; }
+.cs-BLOCKED { background: #fef3e2; color: #c2710c; }
+
+/* 测试用例：优先级标签配色 */
+.cp-P0 { background: #fde8e8; color: #c81e1e; }
+.cp-P1 { background: #fdf0e8; color: #e8705f; }
+.cp-P2 { background: #e8f1fd; color: #1a56db; }
+.cp-P3 { background: #eef2f5; color: #94a3b8; }
+
+/* ===== 用例导入弹窗 ===== */
+.import-steps p { margin-bottom: 12px; color: #444; line-height: 1.8; }
+.import-steps .btn-sm { margin-left: 8px; }
+.import-steps input[type="file"] { display: block; margin-top: 6px; font-size: 13px; }
+.import-preview { max-height: 320px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; margin-top: 4px; }
+.import-preview .bug-table td { white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.import-row-error td { background: #fde8e8; }
+.import-error-text { color: #c81e1e; }
+
+/* ===== 用例详情弹窗：与新建表单一致的展现 ===== */
+.detail-field { display: block; margin-bottom: 12px; font-weight: 600; color: #444; font-size: 14px; }
+.detail-field-box {
+  margin-top: 5px;
+  padding: 8px 10px;
+  border: 1px solid #e3e7ee;
+  border-radius: 6px;
+  background: #f8f9fa;
+  font-size: 14px;
+  font-weight: 400;
+  color: #333;
+  min-height: 36px;
+}
+.detail-field-multi { white-space: pre-wrap; min-height: 64px; }
+.detail-section-title {
+  margin: 18px 0 12px;
+  padding-top: 14px;
+  border-top: 1px dashed #e0e3e8;
+  font-weight: 600;
+  font-size: 13px;
+  color: #d94f3d;
+}
+
 /* ===== 左侧项目栏 ===== */
 .proj-sidebar {
   width: 260px;
@@ -347,6 +391,7 @@ body {
 .modal input:focus, .modal textarea:focus, .modal select:focus { border-color: #d94f3d; }
 .form-row { display: flex; gap: 14px; }
 .form-row label { flex: 1; }
+.form-row .detail-field { flex: 1; }
 .required { color: #e02424; }
 .modal-actions {
   display: flex;

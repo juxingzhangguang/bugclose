@@ -2,10 +2,15 @@
 const API = '/api/bugs';
 const PROJECT_API = '/api/projects';
 const DOC_API = '/api/docs';
+const CASE_API = '/api/testcases';
 
 const SEVERITY_TEXT = { CRITICAL: '致命', HIGH: '严重', MEDIUM: '一般', LOW: '轻微' };
 const PRIORITY_TEXT = { URGENT: '紧急', HIGH: '高', MEDIUM: '中', LOW: '低' };
 const STATUS_TEXT = { NEW: '新建', IN_PROGRESS: '处理中', RESOLVED: '已解决', CLOSED: '已关闭' };
+const CASE_STATUS_TEXT = { NOT_RUN: '未执行', PASS: '通过', FAIL: '失败', BLOCKED: '阻塞' };
+const CASE_PRIORITY_TEXT = { P0: 'P0 冒烟', P1: 'P1 核心', P2: 'P2 一般', P3: 'P3 边缘' };
+/* 用例执行状态堆叠图配色，与列表状态标签色系一致 */
+const CASE_STATUS_COLOR = { NOT_RUN: '#94a3b8', PASS: '#05803c', FAIL: '#c81e1e', BLOCKED: '#c2710c' };
 const DOC_CATEGORY_TEXT = {
   REQUIREMENT: '需求文档',
   DESIGN: '设计文档',
@@ -45,8 +50,10 @@ document.querySelectorAll('.nav-btn').forEach((btn) => {
     $('viewList').classList.toggle('hidden', view !== 'list');
     $('viewDashboard').classList.toggle('hidden', view !== 'dashboard');
     $('viewDocs').classList.toggle('hidden', view !== 'docs');
+    $('viewCases').classList.toggle('hidden', view !== 'cases');
     if (view === 'dashboard') loadStatistics();
     else if (view === 'docs') loadDocs();
+    else if (view === 'cases') loadCases();
     else loadBugs();
   });
 });
@@ -102,9 +109,12 @@ async function refreshProjects() {
   }
   renderProjectSidebar();
   renderDocSidebar();
+  renderCaseSidebar();
   fillProjectSelect($('bugProject'), '未关联项目');
   fillProjectSelect($('docProject'), '未关联项目');
   fillProjectSelect($('dProject'), '全部项目');
+  fillProjectSelect($('caseProject'), '未关联项目');
+  fillProjectSelect($('cProject'), '全部项目');
 }
 
 function fillProjectSelect(select, emptyText) {
@@ -1167,6 +1177,574 @@ function formatSize(bytes) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
+
+/* ===== 测试用例 ===== */
+let allCases = []; // 当前筛选条件下的用例列表，前端分页
+let casePage = 1;
+let casePageSize = 10;
+
+/* 用例展示编号：项目编号-TC序号（如 MALL-TC1），无项目编号时退回 TC-序号 */
+function caseNo(tc) {
+  const no = tc.seq ?? tc.id;
+  const p = projects.find((x) => x.id === tc.projectId);
+  return p && p.code ? `${p.code}-TC${no}` : `TC-${no}`;
+}
+
+async function loadCases() {
+  const params = new URLSearchParams();
+  if ($('cProject').value) params.set('projectId', $('cProject').value);
+  if ($('cStatus').value) params.set('status', $('cStatus').value);
+  if ($('cPriority').value) params.set('priority', $('cPriority').value);
+  if ($('cKeyword').value.trim()) params.set('keyword', $('cKeyword').value.trim());
+  try {
+    allCases = await request(`${CASE_API}?${params.toString()}`);
+    // 按项目分组、项目内按序号从 1 往下排（未关联排最后）
+    allCases.sort((a, b) => {
+      const pa = a.projectId ?? Number.MAX_SAFE_INTEGER;
+      const pb = b.projectId ?? Number.MAX_SAFE_INTEGER;
+      return pa - pb || (a.seq ?? a.id) - (b.seq ?? b.id);
+    });
+    renderCases();
+  } catch (e) {
+    showToast(e.message, true);
+  }
+  loadCaseSummary();
+}
+
+/* 用例汇总分析（列表下方图表，全量数据不受筛选影响） */
+async function loadCaseSummary() {
+  try {
+    const cases = await request(CASE_API);
+    renderCaseSummary(cases);
+  } catch {
+    /* 汇总失败不影响列表 */
+  }
+}
+
+function renderCaseSummary(cases) {
+  // 按执行状态汇总，四态全部列出便于对比
+  const statusMap = {};
+  for (const k of Object.keys(CASE_STATUS_TEXT)) statusMap[k] = 0;
+  for (const c of cases) statusMap[c.status] = (statusMap[c.status] || 0) + 1;
+  renderBarChart('chartCaseStatus', statusMap, CASE_STATUS_TEXT);
+
+  // 同步左侧项目栏的用例计数
+  caseCountByProject = new Map();
+  for (const c of cases) {
+    caseCountByProject.set(c.projectId, (caseCountByProject.get(c.projectId) || 0) + 1);
+  }
+  renderCaseSidebar();
+
+  // 按项目汇总
+  const rows = bucketByProject(cases, '未关联');
+  if (!rows.length) {
+    ['chartCaseProjCount', 'chartCaseProjStatus'].forEach((id) => {
+      $(id).innerHTML = '<p class="chart-empty">暂无数据</p>';
+    });
+    return;
+  }
+  const countMap = {};
+  for (const r of rows) countMap[r.name] = r.items.length;
+  renderBarChart('chartCaseProjCount', countMap, null);
+  renderStackChart('chartCaseProjStatus', rows, 'status', CASE_STATUS_TEXT, CASE_STATUS_COLOR);
+}
+
+/* ===== 测试用例左侧项目栏（与文档库同款布局，计数为用例数） ===== */
+let caseProjPage = 1;
+let caseProjPageSize = 10;
+let caseCountByProject = new Map(); // projectId -> 用例数
+
+function renderCaseSidebar() {
+  const list = $('caseProjList');
+  const totalPages = Math.max(1, Math.ceil(projects.length / caseProjPageSize));
+  if (caseProjPage > totalPages) caseProjPage = totalPages;
+  const pageProjects = projects.slice((caseProjPage - 1) * caseProjPageSize, caseProjPage * caseProjPageSize);
+  const selected = $('cProject').value;
+  const items = [
+    `<li class="proj-item ${selected === '' ? 'active' : ''}" data-id="">
+      <span class="proj-item-name">📋 全部项目</span>
+    </li>`,
+  ];
+  for (const p of pageProjects) {
+    const active = selected === String(p.id);
+    const count = caseCountByProject.get(p.id) || 0;
+    items.push(`
+      <li class="proj-item ${active ? 'active' : ''}" data-id="${p.id}" title="${escapeHtml(p.description || p.name)}">
+        <span class="proj-item-name">${escapeHtml(p.name)}</span>
+        <span class="proj-item-count ${count === 0 ? 'zero' : ''}">${count}</span>
+        <span class="proj-item-ops">
+          <button data-op="edit" data-id="${p.id}" title="编辑项目">✎</button>
+          <button data-op="del" data-id="${p.id}" title="删除项目">×</button>
+        </span>
+      </li>`);
+  }
+  if (!projects.length) {
+    items.push('<li class="proj-list-empty">暂无项目，点上方＋创建</li>');
+  }
+  list.innerHTML = items.join('');
+  // 不满一页时也保持固定高度（1 个「全部项目」+ 每页项目位）
+  list.style.minHeight = `${(caseProjPageSize + 1) * 37 + 16}px`;
+  $('caseProjPageInfo').textContent = `${caseProjPage}/${totalPages}`;
+  $('caseProjPrev').disabled = caseProjPage <= 1;
+  $('caseProjNext').disabled = caseProjPage >= totalPages;
+}
+
+$('caseProjPrev').addEventListener('click', () => {
+  caseProjPage--;
+  renderCaseSidebar();
+});
+$('caseProjNext').addEventListener('click', () => {
+  caseProjPage++;
+  renderCaseSidebar();
+});
+$('caseProjPageSize').addEventListener('change', (e) => {
+  caseProjPageSize = Number(e.target.value);
+  caseProjPage = 1;
+  renderCaseSidebar();
+});
+
+$('btnCaseNewProject').addEventListener('click', () => {
+  $('projModalTitle').textContent = '新建项目';
+  $('projForm').reset();
+  $('projId').value = '';
+  $('projMask').classList.remove('hidden');
+});
+
+$('caseProjList').addEventListener('click', async (e) => {
+  const opBtn = e.target.closest('button[data-op]');
+  if (opBtn) {
+    const id = Number(opBtn.dataset.id);
+    if (opBtn.dataset.op === 'edit') {
+      openProjectEditModal(id);
+    } else if (opBtn.dataset.op === 'del') {
+      const p = projects.find((x) => x.id === id);
+      if (!confirm(`确定删除项目「${p ? p.name : '#' + id}」吗？`)) return;
+      try {
+        await request(`${PROJECT_API}/${id}`, { method: 'DELETE' });
+        showToast('删除成功');
+        await refreshProjects();
+        loadCases();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+    return;
+  }
+  // 点击项目项 → 切换用例筛选（与筛选栏下拉联动）
+  const item = e.target.closest('.proj-item');
+  if (!item) return;
+  $('cProject').value = item.dataset.id;
+  casePage = 1;
+  renderCaseSidebar();
+  loadCases();
+});
+
+function renderCases() {
+  const tbody = $('caseTbody');
+  tbody.innerHTML = '';
+  const totalPages = Math.max(1, Math.ceil(allCases.length / casePageSize));
+  if (casePage > totalPages) casePage = totalPages;
+  const pageCases = allCases.slice((casePage - 1) * casePageSize, casePage * casePageSize);
+  for (const tc of pageCases) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${caseNo(tc)}</td>
+      <td class="bug-title-cell" title="${escapeHtml(tc.steps || '')}">${escapeHtml(tc.title)}</td>
+      <td>${tc.projectId != null ? `<span class="tag proj-tag">${escapeHtml(projectName(tc.projectId))}</span>` : '<span class="detail-empty">未关联</span>'}</td>
+      <td>${tc.module ? escapeHtml(tc.module) : '-'}</td>
+      <td><span class="tag cp-${tc.priority}">${CASE_PRIORITY_TEXT[tc.priority] || tc.priority}</span></td>
+      <td><span class="tag cs-${tc.status}">${CASE_STATUS_TEXT[tc.status] || tc.status}</span></td>
+      <td>${escapeHtml(tc.executor || '-')}</td>
+      <td>${formatTime(tc.executedAt)}</td>
+      <td class="op-cell">
+        <button class="btn btn-sm" data-op="detail" data-id="${tc.id}">详情</button>
+        <button class="btn btn-sm" data-op="exec" data-id="${tc.id}">执行</button>
+        <button class="btn btn-sm" data-op="edit" data-id="${tc.id}">编辑</button>
+        <button class="btn btn-sm btn-danger" data-op="del" data-id="${tc.id}">删除</button>
+      </td>`;
+    tbody.appendChild(tr);
+  }
+  if (!allCases.length) {
+    const tr = document.createElement('tr');
+    tr.className = 'empty-row';
+    tr.innerHTML = '<td colspan="9">暂无用例，点右上方「+ 新建用例」创建</td>';
+    tbody.appendChild(tr);
+  }
+  // 不满一页时用空行补齐，保持表格高度固定
+  const rendered = pageCases.length + (allCases.length ? 0 : 1);
+  for (let i = rendered; i < casePageSize; i++) {
+    const tr = document.createElement('tr');
+    tr.className = 'filler-row';
+    tr.innerHTML = '<td colspan="9">&nbsp;</td>';
+    tbody.appendChild(tr);
+  }
+
+  renderCasePager(totalPages);
+}
+
+/* 用例列表分页栏 */
+function renderCasePager(totalPages) {
+  const nums = pageNumbers(casePage, totalPages)
+    .map((n) =>
+      n === '…'
+        ? '<span class="pager-ellipsis">…</span>'
+        : `<button class="pager-btn ${n === casePage ? 'active' : ''}" data-page="${n}">${n}</button>`
+    )
+    .join('');
+  $('casePager').innerHTML = `
+    <span class="pager-total">共 ${allCases.length} 条</span>
+    <select id="casePageSize" class="pager-size">
+      ${[10, 20, 50].map((s) => `<option value="${s}" ${s === casePageSize ? 'selected' : ''}>${s} 条/页</option>`).join('')}
+    </select>
+    <button class="pager-btn" data-page="${casePage - 1}" ${casePage <= 1 ? 'disabled' : ''}>上一页</button>
+    ${nums}
+    <button class="pager-btn" data-page="${casePage + 1}" ${casePage >= totalPages ? 'disabled' : ''}>下一页</button>`;
+}
+
+$('casePager').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-page]');
+  if (!btn || btn.disabled) return;
+  casePage = Number(btn.dataset.page);
+  renderCases();
+});
+$('casePager').addEventListener('change', (e) => {
+  if (e.target.id === 'casePageSize') {
+    casePageSize = Number(e.target.value);
+    casePage = 1;
+    renderCases();
+  }
+});
+
+$('btnCaseSearch').addEventListener('click', loadCases);
+$('btnCaseReset').addEventListener('click', () => {
+  $('cKeyword').value = '';
+  $('cProject').value = '';
+  $('cStatus').value = '';
+  $('cPriority').value = '';
+  loadCases();
+});
+$('cKeyword').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') loadCases();
+});
+
+/* 用例列表操作 */
+$('caseTbody').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-op]');
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  const tc = allCases.find((c) => c.id === id);
+  if (!tc) return;
+  const op = btn.dataset.op;
+  if (op === 'detail') {
+    openCaseDetail(tc);
+  } else if (op === 'exec') {
+    openCaseExecModal(tc);
+  } else if (op === 'edit') {
+    openCaseEditModal(tc);
+  } else if (op === 'del') {
+    if (!confirm(`确定删除用例 ${caseNo(tc)}「${tc.title}」吗？`)) return;
+    try {
+      await request(`${CASE_API}/${id}`, { method: 'DELETE' });
+      showToast('删除成功');
+      loadCases();
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  }
+});
+
+/* 新建/编辑用例弹窗 */
+$('btnCaseNew').addEventListener('click', () => {
+  $('caseModalTitle').textContent = '新建用例';
+  $('caseForm').reset();
+  $('caseId').value = '';
+  $('caseProject').value = $('cProject').value; // 默认带入当前筛选的项目
+  $('caseMask').classList.remove('hidden');
+});
+
+function openCaseEditModal(tc) {
+  $('caseModalTitle').textContent = `编辑用例 ${caseNo(tc)}`;
+  $('caseForm').reset();
+  $('caseId').value = tc.id;
+  $('caseTitle').value = tc.title;
+  $('caseProject').value = tc.projectId != null ? String(tc.projectId) : '';
+  $('caseModule').value = tc.module || '';
+  $('casePriority').value = tc.priority;
+  $('caseDesigner').value = tc.designer || '';
+  $('casePrecondition').value = tc.precondition || '';
+  $('caseSteps').value = tc.steps || '';
+  $('caseExpected').value = tc.expectedResult || '';
+  $('caseMask').classList.remove('hidden');
+}
+
+$('btnCaseCancel').addEventListener('click', () => $('caseMask').classList.add('hidden'));
+
+$('caseForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('caseId').value;
+  const payload = {
+    title: $('caseTitle').value.trim(),
+    projectId: $('caseProject').value ? Number($('caseProject').value) : null,
+    module: $('caseModule').value.trim(),
+    priority: $('casePriority').value,
+    designer: $('caseDesigner').value.trim(),
+    precondition: $('casePrecondition').value.trim(),
+    steps: $('caseSteps').value.trim(),
+    expectedResult: $('caseExpected').value.trim(),
+  };
+  try {
+    if (id) {
+      await request(`${CASE_API}/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      showToast('更新成功');
+    } else {
+      await request(CASE_API, { method: 'POST', body: JSON.stringify(payload) });
+      showToast('创建成功');
+    }
+    $('caseMask').classList.add('hidden');
+    loadCases();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+/* 执行用例弹窗 */
+function openCaseExecModal(tc) {
+  $('caseExecId').value = tc.id;
+  $('caseExecInfo').textContent = `${caseNo(tc)}「${tc.title}」当前状态：${CASE_STATUS_TEXT[tc.status]}`;
+  $('caseExecForm').reset();
+  $('caseExecStatus').value = 'PASS';
+  $('caseExecResult').value = tc.actualResult || '';
+  $('caseExecutor').value = tc.executor || '';
+  $('caseExecMask').classList.remove('hidden');
+}
+
+$('btnCaseExecCancel').addEventListener('click', () => $('caseExecMask').classList.add('hidden'));
+
+$('caseExecForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('caseExecId').value;
+  const payload = {
+    status: $('caseExecStatus').value,
+    actualResult: $('caseExecResult').value.trim(),
+    executor: $('caseExecutor').value.trim(),
+  };
+  try {
+    await request(`${CASE_API}/${id}/execute`, { method: 'PUT', body: JSON.stringify(payload) });
+    showToast('执行结果已记录');
+    $('caseExecMask').classList.add('hidden');
+    loadCases();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+/* 用例详情弹窗 */
+let caseDetailId = null; // 当前详情弹窗展示的用例 ID
+
+/* 详情弹窗字段：与新建表单一致的「字段名在上、值框在下」展现 */
+function caseDetailField(name, valueHtml, multi = false) {
+  return `<div class="detail-field">${name}<div class="detail-field-box${multi ? ' detail-field-multi' : ''}">${valueHtml}</div></div>`;
+}
+
+function caseDetailText(value, emptyText) {
+  return value ? escapeHtml(value) : `<span class="detail-empty">${emptyText}</span>`;
+}
+
+function openCaseDetail(tc) {
+  caseDetailId = tc.id;
+  $('caseDetailTitle').textContent = `用例 ${caseNo(tc)} 详情`;
+  $('caseDetailBody').innerHTML = `
+    ${caseDetailField('用例标题', escapeHtml(tc.title))}
+    <div class="form-row">
+      ${caseDetailField('所属项目', tc.projectId != null ? escapeHtml(projectName(tc.projectId)) : '<span class="detail-empty">未关联</span>')}
+      ${caseDetailField('所属模块', caseDetailText(tc.module, '未填写'))}
+    </div>
+    <div class="form-row">
+      ${caseDetailField('优先级', `<span class="tag cp-${tc.priority}">${CASE_PRIORITY_TEXT[tc.priority]}</span>`)}
+      ${caseDetailField('编写人', caseDetailText(tc.designer, '未填写'))}
+    </div>
+    ${caseDetailField('前置条件', caseDetailText(tc.precondition, '无'), true)}
+    ${caseDetailField('测试步骤', caseDetailText(tc.steps, '无'), true)}
+    ${caseDetailField('预期结果', caseDetailText(tc.expectedResult, '无'), true)}
+    <div class="detail-section-title">执行信息</div>
+    <div class="form-row">
+      ${caseDetailField('执行状态', `<span class="tag cs-${tc.status}">${CASE_STATUS_TEXT[tc.status]}</span>`)}
+      ${caseDetailField('执行人', caseDetailText(tc.executor, '未执行'))}
+    </div>
+    ${caseDetailField('实际结果', caseDetailText(tc.actualResult, '无'), true)}
+    <div class="form-row">
+      ${caseDetailField('最近执行时间', formatTime(tc.executedAt))}
+      ${caseDetailField('创建时间', formatTime(tc.createdAt))}
+      ${caseDetailField('更新时间', formatTime(tc.updatedAt))}
+    </div>`;
+  $('caseDetailMask').classList.remove('hidden');
+}
+
+$('btnCaseDetailClose').addEventListener('click', () => $('caseDetailMask').classList.add('hidden'));
+
+$('btnCaseDetailEdit').addEventListener('click', () => {
+  $('caseDetailMask').classList.add('hidden');
+  const tc = allCases.find((c) => c.id === caseDetailId);
+  if (tc) openCaseEditModal(tc);
+});
+
+$('btnCaseDetailExec').addEventListener('click', () => {
+  $('caseDetailMask').classList.add('hidden');
+  const tc = allCases.find((c) => c.id === caseDetailId);
+  if (tc) openCaseExecModal(tc);
+});
+
+/* ===== 用例导入 ===== */
+const CASE_IMPORT_HEADERS = ['用例标题', '所属项目', '所属模块', '优先级', '前置条件', '测试步骤', '预期结果', '编写人'];
+let caseImportRows = []; // 解析后待导入的用例数组
+
+$('btnCaseImport').addEventListener('click', () => {
+  caseImportRows = [];
+  $('caseImportFile').value = '';
+  $('caseImportPreviewWrap').classList.add('hidden');
+  $('btnCaseImportConfirm').disabled = true;
+  $('caseImportMask').classList.remove('hidden');
+});
+
+$('btnCaseImportCancel').addEventListener('click', () => $('caseImportMask').classList.add('hidden'));
+
+/* 下载导入模板（带 BOM 保证 Excel 打开不乱码，附两行示例） */
+$('btnCaseTemplate').addEventListener('click', () => {
+  const example1 = ['登录-密码错误提示', projects[0] ? projects[0].name : '', '登录模块', 'P1', '已注册账号', '1. 打开登录页\n2. 输入错误密码\n3. 点击登录', '提示「账号或密码错误」', '张三'];
+  const example2 = ['首页-轮播图展示', '', '首页', 'P2', '', '打开首页观察轮播图', '轮播图正常轮播切换', ''];
+  const lines = [CASE_IMPORT_HEADERS, example1, example2]
+    .map((row) => row.map(csvEscape).join(','))
+    .join('\r\n');
+  const blob = new Blob(['\uFEFF' + lines], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '测试用例导入模板.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+/* CSV 字段转义：含逗号/引号/换行时用双引号包裹 */
+function csvEscape(v) {
+  const s = String(v ?? '');
+  return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+}
+
+/* CSV 解析：支持双引号包裹、字段内逗号与换行 */
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += ch;
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      row.push(field); field = '';
+    } else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      rows.push(row); row = [];
+    } else {
+      field += ch;
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  // 去掉全空行
+  return rows.filter((r) => r.some((c) => c.trim() !== ''));
+}
+
+/* 选文件后解析并预览（UTF-8 乱码时自动按 GBK 重读，兼容 Excel 另存的 CSV） */
+$('caseImportFile').addEventListener('change', async () => {
+  const file = $('caseImportFile').files[0];
+  if (!file) return;
+  const buf = await file.arrayBuffer();
+  let text = new TextDecoder('utf-8').decode(buf);
+  if (text.includes('\uFFFD')) text = new TextDecoder('gbk').decode(buf);
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  const rows = parseCsv(text);
+  if (!rows.length) return showToast('文件内容为空', true);
+
+  // 表头容错：按模板列名定位列序，找不到「用例标题」列则拒绝
+  const header = rows[0].map((h) => h.trim());
+  const colIdx = CASE_IMPORT_HEADERS.map((name) => header.findIndex((h) => h.includes(name)));
+  if (colIdx[0] === -1) return showToast('未识别到「用例标题」列，请使用下载的模板填写', true);
+
+  caseImportRows = [];
+  const previewTrs = [];
+  const errors = [];
+  rows.slice(1).forEach((r, i) => {
+    const cell = (idx) => (colIdx[idx] >= 0 ? (r[colIdx[idx]] || '').trim() : '');
+    const title = cell(0);
+    const projName = cell(1);
+    const priority = cell(3).toUpperCase();
+    const proj = projName ? projects.find((p) => p.name === projName || p.code === projName.toUpperCase()) : null;
+    const rowErrors = [];
+    if (!title) rowErrors.push('标题为空');
+    if (projName && !proj) rowErrors.push(`项目「${projName}」不存在`);
+    if (priority && !CASE_PRIORITY_TEXT[priority]) rowErrors.push(`优先级「${cell(3)}」无效（应为 P0~P3）`);
+    if (rowErrors.length) {
+      errors.push(`第 ${i + 2} 行：${rowErrors.join('、')}`);
+    } else {
+      caseImportRows.push({
+        title,
+        projectId: proj ? proj.id : null,
+        module: cell(2),
+        priority: priority || 'P2',
+        precondition: cell(4),
+        steps: cell(5),
+        expectedResult: cell(6),
+        designer: cell(7),
+      });
+    }
+    previewTrs.push(`<tr class="${rowErrors.length ? 'import-row-error' : ''}" title="${escapeHtml(rowErrors.join('、'))}">
+      <td class="seq-col">${i + 2}</td>
+      <td class="bug-title-cell">${escapeHtml(title) || '<span class="detail-empty">空</span>'}</td>
+      <td>${proj ? escapeHtml(proj.name) : projName ? `❌ ${escapeHtml(projName)}` : '未关联'}</td>
+      <td>${escapeHtml(cell(2)) || '-'}</td>
+      <td>${escapeHtml(cell(3)) || 'P2'}</td>
+      <td class="bug-title-cell">${escapeHtml(cell(4)) || '-'}</td>
+      <td class="bug-title-cell" title="${escapeHtml(cell(5))}">${escapeHtml(cell(5)) || '-'}</td>
+      <td class="bug-title-cell">${escapeHtml(cell(6)) || '-'}</td>
+      <td>${escapeHtml(cell(7)) || '-'}</td>
+    </tr>`);
+  });
+
+  $('caseImportTbody').innerHTML = previewTrs.join('');
+  $('caseImportSummary').innerHTML = errors.length
+    ? `共 ${rows.length - 1} 行：可导入 <b>${caseImportRows.length}</b> 条，<b class="import-error-text">${errors.length} 条有误将跳过</b>（标红行悬停可看原因）`
+    : `共 ${rows.length - 1} 行，均可导入`;
+  $('caseImportPreviewWrap').classList.remove('hidden');
+  $('btnCaseImportConfirm').disabled = !caseImportRows.length;
+});
+
+$('btnCaseImportConfirm').addEventListener('click', async () => {
+  if (!caseImportRows.length) return;
+  $('btnCaseImportConfirm').disabled = true;
+  try {
+    const result = await request(`${CASE_API}/import`, { method: 'POST', body: JSON.stringify(caseImportRows) });
+    const failed = result.failures ? result.failures.length : 0;
+    showToast(`导入完成：成功 ${result.success} 条${failed ? `，失败 ${failed} 条` : ''}`, failed > 0);
+    $('caseImportMask').classList.add('hidden');
+    loadCases();
+  } catch (err) {
+    showToast(err.message, true);
+    $('btnCaseImportConfirm').disabled = false;
+  }
+});
+
+/* ===== 全局快捷键 ===== */
+/* ESC 关闭当前打开的弹窗；多层叠加时（如详情上的图片预览）先关最上层 */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const masks = document.querySelectorAll('.modal-mask:not(.hidden)');
+  if (masks.length) masks[masks.length - 1].classList.add('hidden');
+});
 
 /* ===== 工具 ===== */
 function escapeHtml(str) {

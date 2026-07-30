@@ -98,7 +98,49 @@ Check "GET 下载指定版本" 200 (Code GET "$base/api/docs/$docId/versions/$ve
 Check "PUT /api/docs/{id} 编辑元信息" 200 (Code PUT "$base/api/docs/$docId" "$tmp\bc-doc3.json")
 Check "GET 不存在文档的版本" 404 (Code GET "$base/api/docs/99999/versions")
 
-# ============ 5. 清理测试数据 ============
+# ============ 5. 测试用例接口 ============
+Check "GET /api/testcases 列表" 200 (Code GET "$base/api/testcases")
+
+'{"title":"api-test-case","projectId":1,"module":"login","priority":"P1","precondition":"pre","steps":"step1","expectedResult":"ok","designer":"tester"}' | Out-File -Encoding utf8 "$tmp\bc-tc.json"
+$c = Code POST "$base/api/testcases" "$tmp\bc-tc.json"
+$tcJson = Resp
+$tcId = if ($tcJson -match '"id":(\d+)') { $Matches[1] } else { 0 }
+Check "POST /api/testcases 创建" 201 $c "id=$tcId"
+Check "新建默认未执行状态" True ($tcJson -match '"status":"NOT_RUN"')
+Check "创建分配项目内序号" True ($tcJson -match '"seq":\d+')
+
+'{"title":""}' | Out-File -Encoding utf8 "$tmp\bc-tc-bad.json"
+Check "POST 缺用例标题被拒绝" 400 (Code POST "$base/api/testcases" "$tmp\bc-tc-bad.json")
+
+Check "GET /api/testcases/{id} 详情" 200 (Code GET "$base/api/testcases/$tcId")
+
+'{"title":"api-test-case-upd","projectId":1,"module":"pay","priority":"P0"}' | Out-File -Encoding utf8 "$tmp\bc-tc2.json"
+Check "PUT /api/testcases/{id} 编辑" 200 (Code PUT "$base/api/testcases/$tcId" "$tmp\bc-tc2.json")
+
+'{"status":"FAIL","actualResult":"not ok","executor":"tester"}' | Out-File -Encoding utf8 "$tmp\bc-tc-exec.json"
+$c = Code PUT "$base/api/testcases/$tcId/execute" "$tmp\bc-tc-exec.json"
+$execJson = Resp
+Check "PUT execute 记录执行结果" 200 $c
+Check "执行后状态为FAIL含执行时间" True (($execJson -match '"status":"FAIL"') -and ($execJson -match '"executedAt":"'))
+
+Check "PUT execute 不存在的用例" 404 (Code PUT "$base/api/testcases/99999/execute" "$tmp\bc-tc-exec.json")
+Check "GET 筛选 status=FAIL" 200 (Code GET "$base/api/testcases?status=FAIL&keyword=api-test")
+
+# 批量导入：2 条有效 + 1 条空标题（应被跳过）
+'[{"title":"api-test-import-1","module":"imp","priority":"P2"},{"title":""},{"title":"api-test-import-2","priority":"P3"}]' | Out-File -Encoding utf8 "$tmp\bc-tc-imp.json"
+$c = Code POST "$base/api/testcases/import" "$tmp\bc-tc-imp.json"
+$impJson = Resp
+Check "POST /api/testcases/import 批量导入" 200 $c
+Check "导入成功2条失败1条" True (($impJson -match '"success":2') -and ($impJson -match '"row":2'))
+
+'[]' | Out-File -Encoding utf8 "$tmp\bc-tc-imp-empty.json"
+Check "POST import 空数组被拒绝" 400 (Code POST "$base/api/testcases/import" "$tmp\bc-tc-imp-empty.json")
+
+# ============ 6. 清理测试数据 ============
+Check "DELETE /api/testcases/{id}" 204 (Code DELETE "$base/api/testcases/$tcId")
+$impList = (Invoke-WebRequest -Uri "$base/api/testcases?keyword=api-test-import" -UseBasicParsing).Content | ConvertFrom-Json
+foreach ($imp in $impList) { Code DELETE "$base/api/testcases/$($imp.id)" | Out-Null }
+Check "清理导入的用例" True ($impList.Count -eq 2)
 Check "DELETE /api/docs/{id}" 204 (Code DELETE "$base/api/docs/$docId")
 Check "DELETE /api/bugs/{id}" 204 (Code DELETE "$base/api/bugs/$bugId")
 Check "DELETE /api/projects/{id}" 204 (Code DELETE "$base/api/projects/$projId")

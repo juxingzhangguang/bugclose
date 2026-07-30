@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BugClose - Bug 管理系统</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=20260733">
 </head>
 <body>
   <header class="topbar">
@@ -12,6 +12,7 @@
     <nav>
       <button class="nav-btn active" data-view="list">Bug 列表</button>
       <button class="nav-btn" data-view="docs">文档库</button>
+      <button class="nav-btn" data-view="cases">测试用例</button>
       <button class="nav-btn" data-view="dashboard">统计看板</button>
     </nav>
   </header>
@@ -203,6 +204,93 @@
         <section class="chart-box">
           <h3>各项目分类构成</h3>
           <div id="chartDocProjCategory" class="bar-chart"></div>
+        </section>
+      </div>
+    </details>
+  </main>
+
+  <!-- 测试用例视图 -->
+  <main id="viewCases" class="view view-wide hidden">
+    <div class="view-with-sidebar">
+    <aside class="proj-sidebar">
+      <div class="proj-sidebar-head">
+        <span>项目</span>
+        <button id="btnCaseNewProject" class="proj-add-btn" title="新建项目">＋</button>
+      </div>
+      <ul id="caseProjList" class="proj-list"></ul>
+      <div class="proj-pager">
+        <select id="caseProjPageSize" title="每页条数">
+          <option value="10" selected>10/页</option>
+          <option value="20">20/页</option>
+          <option value="50">50/页</option>
+        </select>
+        <button id="caseProjPrev" title="上一页">‹</button>
+        <span id="caseProjPageInfo">1/1</span>
+        <button id="caseProjNext" title="下一页">›</button>
+      </div>
+    </aside>
+
+    <div class="list-main">
+    <section class="filter-bar">
+      <input type="text" id="cKeyword" placeholder="搜索用例标题 / 模块关键字">
+      <select id="cProject">
+        <option value="">全部项目</option>
+      </select>
+      <select id="cStatus">
+        <option value="">全部执行状态</option>
+        <option value="NOT_RUN">未执行</option>
+        <option value="PASS">通过</option>
+        <option value="FAIL">失败</option>
+        <option value="BLOCKED">阻塞</option>
+      </select>
+      <select id="cPriority">
+        <option value="">全部优先级</option>
+        <option value="P0">P0 冒烟</option>
+        <option value="P1">P1 核心</option>
+        <option value="P2">P2 一般</option>
+        <option value="P3">P3 边缘</option>
+      </select>
+      <button id="btnCaseSearch" class="btn btn-primary">查询</button>
+      <button id="btnCaseReset" class="btn">重置</button>
+      <button id="btnCaseImport" class="btn">⬆ 导入</button>
+      <button id="btnCaseNew" class="btn btn-primary">+ 新建用例</button>
+    </section>
+
+    <table class="bug-table">
+      <thead>
+        <tr>
+          <th>编号</th>
+          <th>用例标题</th>
+          <th>所属项目</th>
+          <th>所属模块</th>
+          <th>优先级</th>
+          <th>执行状态</th>
+          <th>执行人</th>
+          <th>最近执行时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="caseTbody"></tbody>
+    </table>
+    <div id="casePager" class="pager"></div>
+    </div>
+    </div>
+
+    <!-- 用例汇总分析（默认折叠，避免撑高页面） -->
+    <details class="proj-summary">
+      <summary>📊 用例执行汇总分析<span class="summary-hint">点击展开 / 收起</span></summary>
+      <div class="chart-grid">
+        <section class="chart-box">
+          <h3>按执行状态分布</h3>
+          <div id="chartCaseStatus" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目用例数量</h3>
+          <div id="chartCaseProjCount" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目执行状态构成</h3>
+          <div id="chartCaseProjStatus" class="bar-chart"></div>
         </section>
       </div>
     </details>
@@ -425,11 +513,142 @@
     </div>
   </div>
 
-  <!-- 图片大图预览 -->
+  <!-- 新建/编辑测试用例弹窗 -->
+  <div id="caseMask" class="modal-mask hidden">
+    <div class="modal modal-lg">
+      <h2 id="caseModalTitle">新建用例</h2>
+      <form id="caseForm">
+        <input type="hidden" id="caseId">
+        <label>用例标题 <span class="required">*</span>
+          <input type="text" id="caseTitle" required maxlength="200" placeholder="简要描述验证点，如：登录-密码错误提示">
+        </label>
+        <div class="form-row">
+          <label>所属项目
+            <select id="caseProject">
+              <option value="">未关联项目</option>
+            </select>
+          </label>
+          <label>所属模块
+            <input type="text" id="caseModule" maxlength="100" placeholder="如：登录模块、订单中心">
+          </label>
+        </div>
+        <div class="form-row">
+          <label>优先级
+            <select id="casePriority">
+              <option value="P0">P0 冒烟</option>
+              <option value="P1">P1 核心</option>
+              <option value="P2" selected>P2 一般</option>
+              <option value="P3">P3 边缘</option>
+            </select>
+          </label>
+          <label>编写人
+            <input type="text" id="caseDesigner" maxlength="50" placeholder="谁编写的">
+          </label>
+        </div>
+        <label>前置条件
+          <textarea id="casePrecondition" rows="2" maxlength="1000" placeholder="执行前需满足的条件，如：已注册账号并处于登出状态"></textarea>
+        </label>
+        <label>测试步骤
+          <textarea id="caseSteps" rows="4" maxlength="4000" placeholder="1. 打开登录页
+2. 输入错误密码
+3. 点击登录"></textarea>
+        </label>
+        <label>预期结果
+          <textarea id="caseExpected" rows="3" maxlength="4000" placeholder="提示「账号或密码错误」，不进入首页"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="btnCaseCancel" class="btn">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 执行用例弹窗 -->
+  <div id="caseExecMask" class="modal-mask hidden">
+    <div class="modal">
+      <h2>执行用例</h2>
+      <p id="caseExecInfo" class="trans-info"></p>
+      <form id="caseExecForm">
+        <input type="hidden" id="caseExecId">
+        <label>执行结果 <span class="required">*</span>
+          <select id="caseExecStatus" required>
+            <option value="PASS">通过</option>
+            <option value="FAIL">失败</option>
+            <option value="BLOCKED">阻塞</option>
+            <option value="NOT_RUN">重置为未执行</option>
+          </select>
+        </label>
+        <label>实际结果 / 备注
+          <textarea id="caseExecResult" rows="3" maxlength="4000" placeholder="实际表现、失败原因或阻塞说明（可选）"></textarea>
+        </label>
+        <label>执行人
+          <input type="text" id="caseExecutor" maxlength="50" placeholder="谁执行的">
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="btnCaseExecCancel" class="btn">取消</button>
+          <button type="submit" class="btn btn-primary">提交结果</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 用例详情弹窗 -->
+  <div id="caseDetailMask" class="modal-mask hidden">
+    <div class="modal modal-lg">
+      <h2 id="caseDetailTitle">用例详情</h2>
+      <div id="caseDetailBody" class="detail-body"></div>
+      <div class="modal-actions">
+        <button type="button" id="btnCaseDetailExec" class="btn">执行</button>
+        <button type="button" id="btnCaseDetailEdit" class="btn">编辑</button>
+        <button type="button" id="btnCaseDetailClose" class="btn btn-primary">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 导入用例弹窗 -->
+  <div id="caseImportMask" class="modal-mask hidden">
+    <div class="modal modal-lg">
+      <h2>导入用例</h2>
+      <div class="import-steps">
+        <p>1．下载模板，按模板格式填写用例数据（CSV，可用 Excel/WPS 编辑后另存为 CSV）
+          <button type="button" id="btnCaseTemplate" class="btn btn-sm">⬇ 下载导入模板</button>
+        </p>
+        <p>2．选择填好的文件，预览确认后点「确认导入」（单次最多 500 条）
+          <input type="file" id="caseImportFile" accept=".csv">
+        </p>
+      </div>
+      <div id="caseImportPreviewWrap" class="import-preview hidden">
+        <p id="caseImportSummary" class="trans-info"></p>
+        <table class="bug-table">
+          <thead>
+            <tr>
+              <th class="seq-col">行号</th>
+              <th>用例标题</th>
+              <th>所属项目</th>
+              <th>所属模块</th>
+              <th>优先级</th>
+              <th>前置条件</th>
+              <th>测试步骤</th>
+              <th>预期结果</th>
+              <th>编写人</th>
+            </tr>
+          </thead>
+          <tbody id="caseImportTbody"></tbody>
+        </table>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="btnCaseImportCancel" class="btn">取消</button>
+        <button type="button" id="btnCaseImportConfirm" class="btn btn-primary" disabled>确认导入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 图片大图预览：会叠加在其他弹窗之上，需位于 DOM 最后保证 ESC 先关它 -->
   <div id="imgPreviewMask" class="modal-mask hidden">
     <img id="imgPreviewLarge" class="img-preview-large" alt="图片预览">
   </div>
 
-  <script src="js/app.js"></script>
+  <script src="js/app.js?v=20260733"></script>
 </body>
 </html>
