@@ -16,7 +16,7 @@ public class BugIdSequenceConfig {
     @Bean
     CommandLineRunner alignBugIdSequence(JdbcTemplate jdbc) {
         return args -> {
-            for (String table : new String[] {"bugs", "projects", "test_cases"}) {
+            for (String table : new String[] {"bugs", "projects", "test_cases", "requirements"}) {
                 jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id SET NO CACHE");
                 Long maxId = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) FROM " + table, Long.class);
                 jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH " + (maxId + 1));

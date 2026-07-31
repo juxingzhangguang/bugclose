@@ -13,6 +13,7 @@
       <button class="nav-btn active" data-view="list">Bug 列表</button>
       <button class="nav-btn" data-view="docs">文档库</button>
       <button class="nav-btn" data-view="cases">测试用例</button>
+      <button class="nav-btn" data-view="requirements">需求管理</button>
       <button class="nav-btn" data-view="dashboard">统计看板</button>
     </nav>
   </header>
@@ -296,8 +297,98 @@
     </details>
   </main>
 
+  <!-- 需求管理视图 -->
+  <main id="viewRequirements" class="view view-wide hidden">
+    <div class="view-with-sidebar">
+    <aside class="proj-sidebar">
+      <div class="proj-sidebar-head">
+        <span>项目</span>
+        <button id="btnReqNewProject" class="proj-add-btn" title="新建项目">＋</button>
+      </div>
+      <ul id="reqProjList" class="proj-list"></ul>
+      <div class="proj-pager">
+        <select id="reqProjPageSize" title="每页条数">
+          <option value="10" selected>10/页</option>
+          <option value="20">20/页</option>
+          <option value="50">50/页</option>
+        </select>
+        <button id="reqProjPrev" title="上一页">‹</button>
+        <span id="reqProjPageInfo">1/1</span>
+        <button id="reqProjNext" title="下一页">›</button>
+      </div>
+    </aside>
+
+    <div class="list-main">
+    <section class="filter-bar">
+      <input type="text" id="reqKeyword" placeholder="搜索需求标题 / 模块关键字">
+      <select id="reqProject">
+        <option value="">全部项目</option>
+      </select>
+      <select id="reqStatus">
+        <option value="">全部状态</option>
+        <option value="DRAFT">草稿</option>
+        <option value="REVIEWING">评审中</option>
+        <option value="APPROVED">已确认</option>
+        <option value="IN_PROGRESS">开发中</option>
+        <option value="COMPLETED">已完成</option>
+        <option value="REJECTED">已拒绝</option>
+      </select>
+      <select id="reqPriority">
+        <option value="">全部优先级</option>
+        <option value="P0">P0 必须</option>
+        <option value="P1">P1 核心</option>
+        <option value="P2">P2 一般</option>
+        <option value="P3">P3 边缘</option>
+      </select>
+      <input type="text" id="reqPeriod" list="reqPeriodList" placeholder="按期筛选">
+      <datalist id="reqPeriodList"></datalist>
+      <button id="reqSearch" class="btn btn-primary">查询</button>
+      <button id="reqReset" class="btn">重置</button>
+      <button id="reqCreate" class="btn btn-primary">+ 新建需求</button>
+    </section>
+
+    <table class="bug-table">
+      <thead>
+        <tr>
+          <th>编号</th>
+          <th>需求标题</th>
+          <th>所属项目</th>
+          <th>所属期</th>
+          <th>所属模块</th>
+          <th>优先级</th>
+          <th>状态</th>
+          <th>提出人</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="reqTbody"></tbody>
+    </table>
+    <div id="reqPager" class="pager"></div>
+    </div>
+    </div>
+
+    <!-- 需求汇总分析（默认折叠，避免撑高页面） -->
+    <details class="proj-summary">
+      <summary>📊 需求汇总分析<span class="summary-hint">点击展开 / 收起</span></summary>
+      <div class="chart-grid">
+        <section class="chart-box">
+          <h3>按状态分布</h3>
+          <div id="chartReqStatus" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目需求数量</h3>
+          <div id="chartReqProjCount" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目状态构成</h3>
+          <div id="chartReqProjStatus" class="bar-chart"></div>
+        </section>
+      </div>
+    </details>
+  </main>
+
   <!-- 新建/编辑弹窗 -->
-  <div id="modalMask" class="modal-mask hidden">
+  <div id="modalMask" class="modal-mask">
     <div class="modal modal-lg">
       <h2 id="modalTitle">新建 Bug</h2>
       <form id="bugForm">
@@ -365,7 +456,7 @@
   </div>
 
   <!-- 状态流转弹窗 -->
-  <div id="transMask" class="modal-mask hidden">
+  <div id="transMask" class="modal-mask">
     <div class="modal modal-sm">
       <h2>状态流转</h2>
       <p id="transInfo" class="trans-info"></p>
@@ -386,7 +477,7 @@
   </div>
 
   <!-- 新建/编辑项目弹窗 -->
-  <div id="projMask" class="modal-mask hidden">
+  <div id="projMask" class="modal-mask">
     <div class="modal">
       <h2 id="projModalTitle">新建项目</h2>
       <form id="projForm">
@@ -409,7 +500,7 @@
   </div>
 
   <!-- Bug 详情弹窗 -->
-  <div id="detailMask" class="modal-mask hidden">
+  <div id="detailMask" class="modal-mask">
     <div class="modal modal-lg">
       <h2 id="detailTitle">Bug 详情</h2>
       <div id="detailBody" class="detail-body"></div>
@@ -420,10 +511,10 @@
     </div>
   </div>
 
-  <div id="toast" class="toast hidden"></div>
+  <div id="toast" class="toast"></div>
 
   <!-- 上传/编辑文档弹窗 -->
-  <div id="docMask" class="modal-mask hidden">
+  <div id="docMask" class="modal-mask">
     <div class="modal">
       <h2 id="docModalTitle">上传文档</h2>
       <form id="docForm">
@@ -466,7 +557,7 @@
   </div>
 
   <!-- 更新版本弹窗 -->
-  <div id="docVerMask" class="modal-mask hidden">
+  <div id="docVerMask" class="modal-mask">
     <div class="modal">
       <h2>更新版本</h2>
       <p id="docVerInfo" class="trans-info"></p>
@@ -490,7 +581,7 @@
   </div>
 
   <!-- 版本历史弹窗 -->
-  <div id="docHisMask" class="modal-mask hidden">
+  <div id="docHisMask" class="modal-mask">
     <div class="modal modal-lg">
       <h2 id="docHisTitle">版本历史</h2>
       <table class="bug-table doc-his-table">
@@ -514,7 +605,7 @@
   </div>
 
   <!-- 新建/编辑测试用例弹窗 -->
-  <div id="caseMask" class="modal-mask hidden">
+  <div id="caseMask" class="modal-mask">
     <div class="modal modal-lg">
       <h2 id="caseModalTitle">新建用例</h2>
       <form id="caseForm">
@@ -565,7 +656,7 @@
   </div>
 
   <!-- 执行用例弹窗 -->
-  <div id="caseExecMask" class="modal-mask hidden">
+  <div id="caseExecMask" class="modal-mask">
     <div class="modal">
       <h2>执行用例</h2>
       <p id="caseExecInfo" class="trans-info"></p>
@@ -594,7 +685,7 @@
   </div>
 
   <!-- 用例详情弹窗 -->
-  <div id="caseDetailMask" class="modal-mask hidden">
+  <div id="caseDetailMask" class="modal-mask">
     <div class="modal modal-lg">
       <h2 id="caseDetailTitle">用例详情</h2>
       <div id="caseDetailBody" class="detail-body"></div>
@@ -606,8 +697,84 @@
     </div>
   </div>
 
+  <!-- 新建/编辑需求弹窗 -->
+  <div id="reqMask" class="modal-mask">
+    <div class="modal modal-lg">
+      <h2 id="reqModalTitle">新建需求</h2>
+      <form id="reqForm">
+        <input type="hidden" id="rId">
+        <label>需求标题 <span class="required">*</span>
+          <input type="text" id="rTitle" required maxlength="200" placeholder="简要描述需求，如：支持用户注册功能">
+        </label>
+        <div class="form-row">
+          <label>所属项目
+            <select id="rProject">
+              <option value="">未关联项目</option>
+            </select>
+          </label>
+          <label>所属期
+            <input type="text" id="rPeriod" list="rPeriodList" maxlength="50" placeholder="如：一期">
+            <datalist id="rPeriodList"></datalist>
+          </label>
+        </div>
+        <div class="form-row">
+          <label>优先级
+            <select id="rPriority">
+              <option value="P0">P0 必须</option>
+              <option value="P1">P1 核心</option>
+              <option value="P2" selected>P2 一般</option>
+              <option value="P3">P3 边缘</option>
+            </select>
+          </label>
+          <label>状态
+            <select id="rStatus">
+              <option value="DRAFT" selected>草稿</option>
+              <option value="REVIEWING">评审中</option>
+              <option value="APPROVED">已确认</option>
+              <option value="IN_PROGRESS">开发中</option>
+              <option value="COMPLETED">已完成</option>
+              <option value="REJECTED">已拒绝</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-row">
+          <label>所属模块
+            <input type="text" id="rModule" maxlength="100" placeholder="如：用户模块、订单中心">
+          </label>
+          <label>提出人
+            <input type="text" id="rProposer" maxlength="50" placeholder="谁提出的">
+          </label>
+        </div>
+        <div class="form-row">
+          <label>负责人
+            <input type="text" id="rAssignee" maxlength="50" placeholder="指派给谁">
+          </label>
+        </div>
+        <label>需求描述
+          <textarea id="rDescription" rows="4" maxlength="4000" placeholder="详细描述需求内容、验收标准等"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="btnReqCancel" class="btn">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 需求详情弹窗 -->
+  <div id="reqDetailMask" class="modal-mask">
+    <div class="modal modal-lg">
+      <h2 id="reqDetailTitle">需求详情</h2>
+      <div id="reqDetailBody" class="detail-body"></div>
+      <div class="modal-actions">
+        <button type="button" id="btnReqDetailEdit" class="btn">编辑</button>
+        <button type="button" id="btnReqDetailClose" class="btn btn-primary">关闭</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 导入用例弹窗 -->
-  <div id="caseImportMask" class="modal-mask hidden">
+  <div id="caseImportMask" class="modal-mask">
     <div class="modal modal-lg">
       <h2>导入用例</h2>
       <div class="import-steps">
@@ -645,7 +812,7 @@
   </div>
 
   <!-- 图片大图预览：会叠加在其他弹窗之上，需位于 DOM 最后保证 ESC 先关它 -->
-  <div id="imgPreviewMask" class="modal-mask hidden">
+  <div id="imgPreviewMask" class="modal-mask">
     <img id="imgPreviewLarge" class="img-preview-large" alt="图片预览">
   </div>
 

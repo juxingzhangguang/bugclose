@@ -1,6 +1,7 @@
 package com.bugclose.project;
 
 import com.bugclose.bug.BugRepository;
+import com.bugclose.requirement.RequirementRepository;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,10 +18,12 @@ public class ProjectService {
 
     private final ProjectRepository projectRepository;
     private final BugRepository bugRepository;
+    private final RequirementRepository requirementRepository;
 
-    public ProjectService(ProjectRepository projectRepository, BugRepository bugRepository) {
+    public ProjectService(ProjectRepository projectRepository, BugRepository bugRepository, RequirementRepository requirementRepository) {
         this.projectRepository = projectRepository;
         this.bugRepository = bugRepository;
+        this.requirementRepository = requirementRepository;
     }
 
     /** 项目视图：附带关联 Bug 数量 */
@@ -94,6 +97,11 @@ public class ProjectService {
         if (bugCount > 0) {
             throw new IllegalStateException(
                     "项目「" + project.getName() + "」下还有 " + bugCount + " 个 Bug，请先处理后再删除");
+        }
+        long reqCount = requirementRepository.countByProjectId(id);
+        if (reqCount > 0) {
+            throw new IllegalStateException(
+                    "项目「" + project.getName() + "」下还有 " + reqCount + " 个需求，请先处理后再删除");
         }
         projectRepository.deleteById(id);
     }

@@ -3,12 +3,17 @@ const API = '/api/bugs';
 const PROJECT_API = '/api/projects';
 const DOC_API = '/api/docs';
 const CASE_API = '/api/testcases';
+const REQ_API = '/api/requirements';
 
 const SEVERITY_TEXT = { CRITICAL: '致命', HIGH: '严重', MEDIUM: '一般', LOW: '轻微' };
 const PRIORITY_TEXT = { URGENT: '紧急', HIGH: '高', MEDIUM: '中', LOW: '低' };
 const STATUS_TEXT = { NEW: '新建', IN_PROGRESS: '处理中', RESOLVED: '已解决', CLOSED: '已关闭' };
 const CASE_STATUS_TEXT = { NOT_RUN: '未执行', PASS: '通过', FAIL: '失败', BLOCKED: '阻塞' };
 const CASE_PRIORITY_TEXT = { P0: 'P0 冒烟', P1: 'P1 核心', P2: 'P2 一般', P3: 'P3 边缘' };
+const REQ_STATUS_TEXT = { DRAFT: '草稿', REVIEWING: '评审中', APPROVED: '已确认', IN_PROGRESS: '开发中', COMPLETED: '已完成', REJECTED: '已拒绝' };
+const REQ_PRIORITY_TEXT = { P0: 'P0 必须', P1: 'P1 核心', P2: 'P2 一般', P3: 'P3 边缘' };
+/* 需求状态堆叠图配色，与列表状态标签色系一致 */
+const REQ_STATUS_COLOR = { DRAFT: '#94a3b8', REVIEWING: '#c2710c', APPROVED: '#1a56db', IN_PROGRESS: '#7e22ce', COMPLETED: '#05803c', REJECTED: '#c81e1e' };
 /* 用例执行状态堆叠图配色，与列表状态标签色系一致 */
 const CASE_STATUS_COLOR = { NOT_RUN: '#94a3b8', PASS: '#05803c', FAIL: '#c81e1e', BLOCKED: '#c2710c' };
 const DOC_CATEGORY_TEXT = {
@@ -41,19 +46,58 @@ const NEXT_STATUS = {
 
 const $ = (id) => document.getElementById(id);
 
+/* ===== 弹窗动画辅助 ===== */
+function openModal(maskEl) {
+  maskEl.classList.remove('hidden');
+  // 强制重排以确保 transition 能触发
+  void maskEl.offsetHeight;
+  maskEl.classList.add('modal-visible');
+}
+function closeModal(maskEl) {
+  maskEl.classList.remove('modal-visible');
+  setTimeout(() => maskEl.classList.add('hidden'), 280);
+}
+
 /* ===== 视图切换 ===== */
+const viewMap = {
+  list: 'viewList',
+  dashboard: 'viewDashboard',
+  docs: 'viewDocs',
+  cases: 'viewCases',
+  requirements: 'viewRequirements',
+};
+let currentViewId = 'viewList';
+let viewSwitching = false;
+
 document.querySelectorAll('.nav-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
+    if (viewSwitching) return;
+    const view = btn.dataset.view;
+    const newViewId = viewMap[view];
+    if (newViewId === currentViewId) return;
+
     document.querySelectorAll('.nav-btn').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
-    const view = btn.dataset.view;
-    $('viewList').classList.toggle('hidden', view !== 'list');
-    $('viewDashboard').classList.toggle('hidden', view !== 'dashboard');
-    $('viewDocs').classList.toggle('hidden', view !== 'docs');
-    $('viewCases').classList.toggle('hidden', view !== 'cases');
+
+    const oldView = $(currentViewId);
+    const newView = $(newViewId);
+    viewSwitching = true;
+
+    // 隐藏旧视图，显示新视图并触发淡入动画
+    oldView.classList.add('hidden');
+    newView.classList.remove('hidden');
+    newView.classList.add('view-animate-in');
+
+    setTimeout(() => {
+      newView.classList.remove('view-animate-in');
+      viewSwitching = false;
+    }, 250);
+
+    currentViewId = newViewId;
     if (view === 'dashboard') loadStatistics();
     else if (view === 'docs') loadDocs();
     else if (view === 'cases') loadCases();
+    else if (view === 'requirements') loadRequirements();
     else loadBugs();
   });
 });
@@ -78,9 +122,9 @@ function showToast(msg, isError = false) {
   const toast = $('toast');
   toast.textContent = msg;
   toast.classList.toggle('error', isError);
-  toast.classList.remove('hidden');
+  toast.classList.add('toast-show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.add('hidden'), 2200);
+  toastTimer = setTimeout(() => toast.classList.remove('toast-show'), 2200);
 }
 
 /* ===== 项目数据 ===== */
@@ -110,11 +154,14 @@ async function refreshProjects() {
   renderProjectSidebar();
   renderDocSidebar();
   renderCaseSidebar();
+  renderReqSidebar();
   fillProjectSelect($('bugProject'), '未关联项目');
   fillProjectSelect($('docProject'), '未关联项目');
   fillProjectSelect($('dProject'), '全部项目');
   fillProjectSelect($('caseProject'), '未关联项目');
   fillProjectSelect($('cProject'), '全部项目');
+  fillProjectSelect($('reqProject'), '全部项目');
+  fillProjectSelect($('rProject'), '未关联项目');
 }
 
 function fillProjectSelect(select, emptyText) {
@@ -224,7 +271,7 @@ function openProjectEditModal(id) {
   $('projName').value = p.name;
   $('projCode').value = p.code || '';
   $('projDesc').value = p.description || '';
-  $('projMask').classList.remove('hidden');
+  openModal($('projMask'));
 }
 
 /* ===== 列表 ===== */
@@ -457,7 +504,7 @@ $('btnNew').addEventListener('click', () => {
   // 新建时默认带入当前侧栏选中的项目
   $('bugProject').value = selectedProjectId;
   setFormImages([]);
-  $('modalMask').classList.remove('hidden');
+  openModal($('modalMask'));
 });
 
 async function openEditModal(id) {
@@ -475,13 +522,13 @@ async function openEditModal(id) {
     $('bugEnvironment').value = bug.environment || '';
     $('bugModule').value = bug.module || '';
     setFormImages(parseImages(bug.images));
-    $('modalMask').classList.remove('hidden');
+    openModal($('modalMask'));
   } catch (e) {
     showToast(e.message, true);
   }
 }
 
-$('btnCancel').addEventListener('click', () => $('modalMask').classList.add('hidden'));
+$('btnCancel').addEventListener('click', () => closeModal($('modalMask')));
 
 $('bugForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -506,7 +553,7 @@ $('bugForm').addEventListener('submit', async (e) => {
       await request(API, { method: 'POST', body: JSON.stringify(payload) });
       showToast('创建成功');
     }
-    $('modalMask').classList.add('hidden');
+    closeModal($('modalMask'));
     refreshProjects().catch(() => {}); // 同步侧栏 Bug 计数
     loadBugs();
   } catch (err) {
@@ -585,12 +632,12 @@ $('imageGrid').addEventListener('click', (e) => {
   const img = e.target.closest('.image-item:not(.uploading) img');
   if (img) {
     $('imgPreviewLarge').src = img.src;
-    $('imgPreviewMask').classList.remove('hidden');
+    openModal($('imgPreviewMask'));
   }
 });
 
 $('imgPreviewMask').addEventListener('click', () => {
-  $('imgPreviewMask').classList.add('hidden');
+  closeModal($('imgPreviewMask'));
   $('imgPreviewLarge').src = '';
 });
 
@@ -624,16 +671,16 @@ async function openDetailModal(id) {
       <div class="detail-row"><span class="detail-label">更新时间</span><span class="detail-value">${formatTime(bug.updatedAt)}</span></div>
       <div class="detail-row"><span class="detail-label">详细描述</span><span class="detail-value detail-desc">${bug.description ? escapeHtml(bug.description) : '<span class="detail-empty">无</span>'}</span></div>
       <div class="detail-row"><span class="detail-label">Bug 图片</span><span class="detail-value">${imagesHtml}</span></div>`;
-    $('detailMask').classList.remove('hidden');
+    openModal($('detailMask'));
   } catch (e) {
     showToast(e.message, true);
   }
 }
 
-$('btnDetailClose').addEventListener('click', () => $('detailMask').classList.add('hidden'));
+$('btnDetailClose').addEventListener('click', () => closeModal($('detailMask')));
 
 $('btnDetailEdit').addEventListener('click', () => {
-  $('detailMask').classList.add('hidden');
+  closeModal($('detailMask'));
   if (detailBugId != null) openEditModal(detailBugId);
 });
 
@@ -642,7 +689,7 @@ $('detailBody').addEventListener('click', (e) => {
   const img = e.target.closest('.image-item img');
   if (img) {
     $('imgPreviewLarge').src = img.src;
-    $('imgPreviewMask').classList.remove('hidden');
+    openModal($('imgPreviewMask'));
   }
 });
 
@@ -662,13 +709,13 @@ async function openTransModal(id) {
       select.appendChild(opt);
     }
     $('transAssignee').value = '';
-    $('transMask').classList.remove('hidden');
+    openModal($('transMask'));
   } catch (e) {
     showToast(e.message, true);
   }
 }
 
-$('btnTransCancel').addEventListener('click', () => $('transMask').classList.add('hidden'));
+$('btnTransCancel').addEventListener('click', () => closeModal($('transMask')));
 
 $('transForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -680,7 +727,7 @@ $('transForm').addEventListener('submit', async (e) => {
   try {
     await request(`${API}/${id}/status`, { method: 'PUT', body: JSON.stringify(payload) });
     showToast('流转成功');
-    $('transMask').classList.add('hidden');
+    closeModal($('transMask'));
     loadBugs();
   } catch (err) {
     showToast(err.message, true);
@@ -692,10 +739,10 @@ $('btnNewProject').addEventListener('click', () => {
   $('projModalTitle').textContent = '新建项目';
   $('projForm').reset();
   $('projId').value = '';
-  $('projMask').classList.remove('hidden');
+  openModal($('projMask'));
 });
 
-$('btnProjCancel').addEventListener('click', () => $('projMask').classList.add('hidden'));
+$('btnProjCancel').addEventListener('click', () => closeModal($('projMask')));
 
 $('projForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -713,7 +760,7 @@ $('projForm').addEventListener('submit', async (e) => {
       await request(PROJECT_API, { method: 'POST', body: JSON.stringify(payload) });
       showToast('创建成功');
     }
-    $('projMask').classList.add('hidden');
+    closeModal($('projMask'));
     await refreshProjects();
     loadBugs();
     // 文档库视图打开时同步刷新文档列表（项目名、侧栏计数）
@@ -886,7 +933,7 @@ $('btnDocNewProject').addEventListener('click', () => {
   $('projModalTitle').textContent = '新建项目';
   $('projForm').reset();
   $('projId').value = '';
-  $('projMask').classList.remove('hidden');
+  openModal($('projMask'));
 });
 
 $('docProjList').addEventListener('click', async (e) => {
@@ -1021,7 +1068,7 @@ $('docTbody').addEventListener('click', async (e) => {
     $('docVerDocId').value = id;
     $('docVerInfo').textContent = `「${doc.title}」当前版本：v${doc.latestVersionNo}，上传后将升级为 v${doc.latestVersionNo + 1}`;
     $('docVerForm').reset();
-    $('docVerMask').classList.remove('hidden');
+    openModal($('docVerMask'));
   } else if (op === 'history') {
     openDocHistory(doc);
   } else if (op === 'edit') {
@@ -1035,7 +1082,7 @@ $('docTbody').addEventListener('click', async (e) => {
     // 编辑仅改元信息，隐藏文件与上传人项（换文件请走「更新版本」）
     $('docFileLabel').classList.add('hidden');
     $('docUploaderLabel').classList.add('hidden');
-    $('docMask').classList.remove('hidden');
+    openModal($('docMask'));
   } else if (op === 'del') {
     if (!confirm(`确定删除文档「${doc.title}」及其全部 ${doc.latestVersionNo} 个版本吗？`)) return;
     try {
@@ -1056,10 +1103,10 @@ $('btnDocNew').addEventListener('click', () => {
   $('docProject').value = $('dProject').value; // 默认带入当前筛选的项目
   $('docFileLabel').classList.remove('hidden');
   $('docUploaderLabel').classList.remove('hidden');
-  $('docMask').classList.remove('hidden');
+  openModal($('docMask'));
 });
 
-$('btnDocCancel').addEventListener('click', () => $('docMask').classList.add('hidden'));
+$('btnDocCancel').addEventListener('click', () => closeModal($('docMask')));
 
 /* 选文件后自动带入文件名作为文档名称 */
 $('docFile').addEventListener('change', () => {
@@ -1098,7 +1145,7 @@ $('docForm').addEventListener('submit', async (e) => {
       await uploadRequest(DOC_API, fd);
       showToast('上传成功');
     }
-    $('docMask').classList.add('hidden');
+    closeModal($('docMask'));
     loadDocs();
   } catch (err) {
     showToast(err.message, true);
@@ -1106,7 +1153,7 @@ $('docForm').addEventListener('submit', async (e) => {
 });
 
 /* 更新版本弹窗 */
-$('btnDocVerCancel').addEventListener('click', () => $('docVerMask').classList.add('hidden'));
+$('btnDocVerCancel').addEventListener('click', () => closeModal($('docVerMask')));
 
 $('docVerForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1121,7 +1168,7 @@ $('docVerForm').addEventListener('submit', async (e) => {
   try {
     await uploadRequest(`${DOC_API}/${id}/versions`, fd);
     showToast('新版本上传成功');
-    $('docVerMask').classList.add('hidden');
+    closeModal($('docVerMask'));
     loadDocs();
   } catch (err) {
     showToast(err.message, true);
@@ -1146,13 +1193,13 @@ async function openDocHistory(doc) {
         </tr>`
       )
       .join('');
-    $('docHisMask').classList.remove('hidden');
+    openModal($('docHisMask'));
   } catch (e) {
     showToast(e.message, true);
   }
 }
 
-$('btnDocHisClose').addEventListener('click', () => $('docHisMask').classList.add('hidden'));
+$('btnDocHisClose').addEventListener('click', () => closeModal($('docHisMask')));
 
 $('docHisTbody').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-ver]');
@@ -1307,7 +1354,7 @@ $('btnCaseNewProject').addEventListener('click', () => {
   $('projModalTitle').textContent = '新建项目';
   $('projForm').reset();
   $('projId').value = '';
-  $('projMask').classList.remove('hidden');
+  openModal($('projMask'));
 });
 
 $('caseProjList').addEventListener('click', async (e) => {
@@ -1459,7 +1506,7 @@ $('btnCaseNew').addEventListener('click', () => {
   $('caseForm').reset();
   $('caseId').value = '';
   $('caseProject').value = $('cProject').value; // 默认带入当前筛选的项目
-  $('caseMask').classList.remove('hidden');
+  openModal($('caseMask'));
 });
 
 function openCaseEditModal(tc) {
@@ -1474,10 +1521,10 @@ function openCaseEditModal(tc) {
   $('casePrecondition').value = tc.precondition || '';
   $('caseSteps').value = tc.steps || '';
   $('caseExpected').value = tc.expectedResult || '';
-  $('caseMask').classList.remove('hidden');
+  openModal($('caseMask'));
 }
 
-$('btnCaseCancel').addEventListener('click', () => $('caseMask').classList.add('hidden'));
+$('btnCaseCancel').addEventListener('click', () => closeModal($('caseMask')));
 
 $('caseForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1500,7 +1547,7 @@ $('caseForm').addEventListener('submit', async (e) => {
       await request(CASE_API, { method: 'POST', body: JSON.stringify(payload) });
       showToast('创建成功');
     }
-    $('caseMask').classList.add('hidden');
+    closeModal($('caseMask'));
     loadCases();
   } catch (err) {
     showToast(err.message, true);
@@ -1515,10 +1562,10 @@ function openCaseExecModal(tc) {
   $('caseExecStatus').value = 'PASS';
   $('caseExecResult').value = tc.actualResult || '';
   $('caseExecutor').value = tc.executor || '';
-  $('caseExecMask').classList.remove('hidden');
+  openModal($('caseExecMask'));
 }
 
-$('btnCaseExecCancel').addEventListener('click', () => $('caseExecMask').classList.add('hidden'));
+$('btnCaseExecCancel').addEventListener('click', () => closeModal($('caseExecMask')));
 
 $('caseExecForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1531,7 +1578,7 @@ $('caseExecForm').addEventListener('submit', async (e) => {
   try {
     await request(`${CASE_API}/${id}/execute`, { method: 'PUT', body: JSON.stringify(payload) });
     showToast('执行结果已记录');
-    $('caseExecMask').classList.add('hidden');
+    closeModal($('caseExecMask'));
     loadCases();
   } catch (err) {
     showToast(err.message, true);
@@ -1577,19 +1624,19 @@ function openCaseDetail(tc) {
       ${caseDetailField('创建时间', formatTime(tc.createdAt))}
       ${caseDetailField('更新时间', formatTime(tc.updatedAt))}
     </div>`;
-  $('caseDetailMask').classList.remove('hidden');
+  openModal($('caseDetailMask'));
 }
 
-$('btnCaseDetailClose').addEventListener('click', () => $('caseDetailMask').classList.add('hidden'));
+$('btnCaseDetailClose').addEventListener('click', () => closeModal($('caseDetailMask')));
 
 $('btnCaseDetailEdit').addEventListener('click', () => {
-  $('caseDetailMask').classList.add('hidden');
+  closeModal($('caseDetailMask'));
   const tc = allCases.find((c) => c.id === caseDetailId);
   if (tc) openCaseEditModal(tc);
 });
 
 $('btnCaseDetailExec').addEventListener('click', () => {
-  $('caseDetailMask').classList.add('hidden');
+  closeModal($('caseDetailMask'));
   const tc = allCases.find((c) => c.id === caseDetailId);
   if (tc) openCaseExecModal(tc);
 });
@@ -1603,10 +1650,10 @@ $('btnCaseImport').addEventListener('click', () => {
   $('caseImportFile').value = '';
   $('caseImportPreviewWrap').classList.add('hidden');
   $('btnCaseImportConfirm').disabled = true;
-  $('caseImportMask').classList.remove('hidden');
+  openModal($('caseImportMask'));
 });
 
-$('btnCaseImportCancel').addEventListener('click', () => $('caseImportMask').classList.add('hidden'));
+$('btnCaseImportCancel').addEventListener('click', () => closeModal($('caseImportMask')));
 
 /* 下载导入模板（带 BOM 保证 Excel 打开不乱码，附两行示例） */
 $('btnCaseTemplate').addEventListener('click', () => {
@@ -1730,7 +1777,7 @@ $('btnCaseImportConfirm').addEventListener('click', async () => {
     const result = await request(`${CASE_API}/import`, { method: 'POST', body: JSON.stringify(caseImportRows) });
     const failed = result.failures ? result.failures.length : 0;
     showToast(`导入完成：成功 ${result.success} 条${failed ? `，失败 ${failed} 条` : ''}`, failed > 0);
-    $('caseImportMask').classList.add('hidden');
+    closeModal($('caseImportMask'));
     loadCases();
   } catch (err) {
     showToast(err.message, true);
@@ -1742,8 +1789,387 @@ $('btnCaseImportConfirm').addEventListener('click', async () => {
 /* ESC 关闭当前打开的弹窗；多层叠加时（如详情上的图片预览）先关最上层 */
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  const masks = document.querySelectorAll('.modal-mask:not(.hidden)');
-  if (masks.length) masks[masks.length - 1].classList.add('hidden');
+  const masks = document.querySelectorAll('.modal-mask.modal-visible');
+  if (masks.length) closeModal(masks[masks.length - 1]);
+});
+
+/* ===== 需求管理 ===== */
+let allRequirements = []; // 当前筛选条件下的需求列表，前端分页
+let reqPage = 1;
+let reqPageSize = 10;
+
+/* 需求展示编号：项目编号-R序号（如 MALL-R1），无项目编号时退回 #R-序号 */
+function reqNo(req) {
+  const no = req.seq ?? req.id;
+  const p = projects.find((x) => x.id === req.projectId);
+  return p && p.code ? `${p.code}-R${no}` : `#R-${no}`;
+}
+
+async function loadRequirements() {
+  const params = new URLSearchParams();
+  if ($('reqProject').value) params.set('projectId', $('reqProject').value);
+  if ($('reqStatus').value) params.set('status', $('reqStatus').value);
+  if ($('reqPriority').value) params.set('priority', $('reqPriority').value);
+  if ($('reqPeriod').value.trim()) params.set('period', $('reqPeriod').value.trim());
+  if ($('reqKeyword').value.trim()) params.set('keyword', $('reqKeyword').value.trim());
+  try {
+    allRequirements = await request(`${REQ_API}?${params.toString()}`);
+    // 按项目分组、项目内按序号从 1 往下排（未关联排最后）
+    allRequirements.sort((a, b) => {
+      const pa = a.projectId ?? Number.MAX_SAFE_INTEGER;
+      const pb = b.projectId ?? Number.MAX_SAFE_INTEGER;
+      return pa - pb || (a.seq ?? a.id) - (b.seq ?? b.id);
+    });
+    // 动态填充期 datalist
+    const periods = [...new Set(allRequirements.map((r) => r.period).filter(Boolean))];
+    $('reqPeriodList').innerHTML = periods.map((p) => `<option value="${escapeHtml(p)}">`).join('');
+    $('rPeriodList').innerHTML = periods.map((p) => `<option value="${escapeHtml(p)}">`).join('');
+    renderRequirements();
+  } catch (e) {
+    showToast(e.message, true);
+  }
+  loadReqSummary();
+}
+
+/* 需求汇总分析（列表下方图表，全量数据不受筛选影响） */
+async function loadReqSummary() {
+  try {
+    const reqs = await request(REQ_API);
+    renderReqSummary(reqs);
+  } catch {
+    /* 汇总失败不影响列表 */
+  }
+}
+
+function renderReqSummary(reqs) {
+  // 按状态汇总
+  const statusMap = {};
+  for (const k of Object.keys(REQ_STATUS_TEXT)) statusMap[k] = 0;
+  for (const r of reqs) statusMap[r.status] = (statusMap[r.status] || 0) + 1;
+  renderBarChart('chartReqStatus', statusMap, REQ_STATUS_TEXT);
+
+  // 同步左侧项目栏的需求计数
+  reqCountByProject = new Map();
+  for (const r of reqs) {
+    reqCountByProject.set(r.projectId, (reqCountByProject.get(r.projectId) || 0) + 1);
+  }
+  renderReqSidebar();
+
+  // 按项目汇总
+  const rows = bucketByProject(reqs, '未关联');
+  if (!rows.length) {
+    ['chartReqProjCount', 'chartReqProjStatus'].forEach((id) => {
+      $(id).innerHTML = '<p class="chart-empty">暂无数据</p>';
+    });
+    return;
+  }
+  const countMap = {};
+  for (const r of rows) countMap[r.name] = r.items.length;
+  renderBarChart('chartReqProjCount', countMap, null);
+  renderStackChart('chartReqProjStatus', rows, 'status', REQ_STATUS_TEXT, REQ_STATUS_COLOR);
+}
+
+/* ===== 需求管理左侧项目栏（与测试用例同款布局，计数为需求数） ===== */
+let reqProjPage = 1;
+let reqProjPageSize = 10;
+let reqCountByProject = new Map(); // projectId -> 需求数
+
+function renderReqSidebar() {
+  const list = $('reqProjList');
+  const totalPages = Math.max(1, Math.ceil(projects.length / reqProjPageSize));
+  if (reqProjPage > totalPages) reqProjPage = totalPages;
+  const pageProjects = projects.slice((reqProjPage - 1) * reqProjPageSize, reqProjPage * reqProjPageSize);
+  const selected = $('reqProject').value;
+  const items = [
+    `<li class="proj-item ${selected === '' ? 'active' : ''}" data-id="">
+      <span class="proj-item-name">📋 全部项目</span>
+    </li>`,
+  ];
+  for (const p of pageProjects) {
+    const active = selected === String(p.id);
+    const count = reqCountByProject.get(p.id) || 0;
+    items.push(`
+      <li class="proj-item ${active ? 'active' : ''}" data-id="${p.id}" title="${escapeHtml(p.description || p.name)}">
+        <span class="proj-item-name">${escapeHtml(p.name)}</span>
+        <span class="proj-item-count ${count === 0 ? 'zero' : ''}">${count}</span>
+        <span class="proj-item-ops">
+          <button data-op="edit" data-id="${p.id}" title="编辑项目">✎</button>
+          <button data-op="del" data-id="${p.id}" title="删除项目">×</button>
+        </span>
+      </li>`);
+  }
+  if (!projects.length) {
+    items.push('<li class="proj-list-empty">暂无项目，点上方＋创建</li>');
+  }
+  list.innerHTML = items.join('');
+  list.style.minHeight = `${(reqProjPageSize + 1) * 37 + 16}px`;
+  $('reqProjPageInfo').textContent = `${reqProjPage}/${totalPages}`;
+  $('reqProjPrev').disabled = reqProjPage <= 1;
+  $('reqProjNext').disabled = reqProjPage >= totalPages;
+}
+
+$('reqProjPrev').addEventListener('click', () => {
+  reqProjPage--;
+  renderReqSidebar();
+});
+$('reqProjNext').addEventListener('click', () => {
+  reqProjPage++;
+  renderReqSidebar();
+});
+$('reqProjPageSize').addEventListener('change', (e) => {
+  reqProjPageSize = Number(e.target.value);
+  reqProjPage = 1;
+  renderReqSidebar();
+});
+
+$('btnReqNewProject').addEventListener('click', () => {
+  $('projModalTitle').textContent = '新建项目';
+  $('projForm').reset();
+  $('projId').value = '';
+  openModal($('projMask'));
+});
+
+$('reqProjList').addEventListener('click', async (e) => {
+  const opBtn = e.target.closest('button[data-op]');
+  if (opBtn) {
+    const id = Number(opBtn.dataset.id);
+    if (opBtn.dataset.op === 'edit') {
+      openProjectEditModal(id);
+    } else if (opBtn.dataset.op === 'del') {
+      const p = projects.find((x) => x.id === id);
+      if (!confirm(`确定删除项目「${p ? p.name : '#' + id}」吗？`)) return;
+      try {
+        await request(`${PROJECT_API}/${id}`, { method: 'DELETE' });
+        showToast('删除成功');
+        await refreshProjects();
+        loadRequirements();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+    return;
+  }
+  // 点击项目项 → 切换需求筛选（与筛选栏下拉联动）
+  const item = e.target.closest('.proj-item');
+  if (!item) return;
+  $('reqProject').value = item.dataset.id;
+  reqPage = 1;
+  renderReqSidebar();
+  loadRequirements();
+});
+
+function renderRequirements() {
+  const tbody = $('reqTbody');
+  tbody.innerHTML = '';
+  const totalPages = Math.max(1, Math.ceil(allRequirements.length / reqPageSize));
+  if (reqPage > totalPages) reqPage = totalPages;
+  const pageReqs = allRequirements.slice((reqPage - 1) * reqPageSize, reqPage * reqPageSize);
+  for (const req of pageReqs) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${reqNo(req)}</td>
+      <td class="bug-title-cell" title="${escapeHtml(req.description || '')}">${escapeHtml(req.title)}</td>
+      <td>${req.projectId != null ? `<span class="tag proj-tag">${escapeHtml(projectName(req.projectId))}</span>` : '<span class="detail-empty">未关联</span>'}</td>
+      <td>${req.period ? escapeHtml(req.period) : '-'}</td>
+      <td>${req.module ? escapeHtml(req.module) : '-'}</td>
+      <td><span class="tag cp-${req.priority}">${REQ_PRIORITY_TEXT[req.priority] || req.priority}</span></td>
+      <td><span class="tag rs-${req.status}">${REQ_STATUS_TEXT[req.status] || req.status}</span></td>
+      <td>${escapeHtml(req.proposer || '-')}</td>
+      <td class="op-cell">
+        <button class="btn btn-sm" data-op="detail" data-id="${req.id}">详情</button>
+        <button class="btn btn-sm" data-op="edit" data-id="${req.id}">编辑</button>
+        <button class="btn btn-sm btn-danger" data-op="del" data-id="${req.id}">删除</button>
+      </td>`;
+    tbody.appendChild(tr);
+  }
+  if (!allRequirements.length) {
+    const tr = document.createElement('tr');
+    tr.className = 'empty-row';
+    tr.innerHTML = '<td colspan="9">暂无需求，点右上方「+ 新建需求」创建</td>';
+    tbody.appendChild(tr);
+  }
+  // 不满一页时用空行补齐，保持表格高度固定
+  const rendered = pageReqs.length + (allRequirements.length ? 0 : 1);
+  for (let i = rendered; i < reqPageSize; i++) {
+    const tr = document.createElement('tr');
+    tr.className = 'filler-row';
+    tr.innerHTML = '<td colspan="9">&nbsp;</td>';
+    tbody.appendChild(tr);
+  }
+
+  renderReqPager(totalPages);
+}
+
+/* 需求列表分页栏 */
+function renderReqPager(totalPages) {
+  const nums = pageNumbers(reqPage, totalPages)
+    .map((n) =>
+      n === '…'
+        ? '<span class="pager-ellipsis">…</span>'
+        : `<button class="pager-btn ${n === reqPage ? 'active' : ''}" data-page="${n}">${n}</button>`
+    )
+    .join('');
+  $('reqPager').innerHTML = `
+    <span class="pager-total">共 ${allRequirements.length} 条</span>
+    <select id="reqPageSize" class="pager-size">
+      ${[10, 20, 50].map((s) => `<option value="${s}" ${s === reqPageSize ? 'selected' : ''}>${s} 条/页</option>`).join('')}
+    </select>
+    <button class="pager-btn" data-page="${reqPage - 1}" ${reqPage <= 1 ? 'disabled' : ''}>上一页</button>
+    ${nums}
+    <button class="pager-btn" data-page="${reqPage + 1}" ${reqPage >= totalPages ? 'disabled' : ''}>下一页</button>`;
+}
+
+$('reqPager').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-page]');
+  if (!btn || btn.disabled) return;
+  reqPage = Number(btn.dataset.page);
+  renderRequirements();
+});
+$('reqPager').addEventListener('change', (e) => {
+  if (e.target.id === 'reqPageSize') {
+    reqPageSize = Number(e.target.value);
+    reqPage = 1;
+    renderRequirements();
+  }
+});
+
+$('reqSearch').addEventListener('click', loadRequirements);
+$('reqReset').addEventListener('click', () => {
+  $('reqKeyword').value = '';
+  $('reqProject').value = '';
+  $('reqStatus').value = '';
+  $('reqPriority').value = '';
+  $('reqPeriod').value = '';
+  loadRequirements();
+});
+$('reqKeyword').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') loadRequirements();
+});
+
+/* 需求列表操作 */
+$('reqTbody').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-op]');
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  const req = allRequirements.find((r) => r.id === id);
+  if (!req) return;
+  const op = btn.dataset.op;
+  if (op === 'detail') {
+    openReqDetail(req);
+  } else if (op === 'edit') {
+    openReqEditModal(req);
+  } else if (op === 'del') {
+    if (!confirm(`确定删除需求 ${reqNo(req)}「${req.title}」吗？`)) return;
+    try {
+      await request(`${REQ_API}/${id}`, { method: 'DELETE' });
+      showToast('删除成功');
+      loadRequirements();
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  }
+});
+
+/* 新建/编辑需求弹窗 */
+$('reqCreate').addEventListener('click', () => {
+  $('reqModalTitle').textContent = '新建需求';
+  $('reqForm').reset();
+  $('rId').value = '';
+  $('rProject').value = $('reqProject').value; // 默认带入当前筛选的项目
+  openModal($('reqMask'));
+});
+
+function openReqEditModal(req) {
+  $('reqModalTitle').textContent = `编辑需求 ${reqNo(req)}`;
+  $('reqForm').reset();
+  $('rId').value = req.id;
+  $('rTitle').value = req.title;
+  $('rProject').value = req.projectId != null ? String(req.projectId) : '';
+  $('rPeriod').value = req.period || '';
+  $('rPriority').value = req.priority;
+  $('rStatus').value = req.status;
+  $('rModule').value = req.module || '';
+  $('rProposer').value = req.proposer || '';
+  $('rAssignee').value = req.assignee || '';
+  $('rDescription').value = req.description || '';
+  openModal($('reqMask'));
+}
+
+$('btnReqCancel').addEventListener('click', () => closeModal($('reqMask')));
+
+$('reqForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('rId').value;
+  const payload = {
+    title: $('rTitle').value.trim(),
+    projectId: $('rProject').value ? Number($('rProject').value) : null,
+    period: $('rPeriod').value.trim(),
+    priority: $('rPriority').value,
+    status: $('rStatus').value,
+    module: $('rModule').value.trim(),
+    proposer: $('rProposer').value.trim(),
+    assignee: $('rAssignee').value.trim(),
+    description: $('rDescription').value.trim(),
+  };
+  try {
+    if (id) {
+      await request(`${REQ_API}/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      showToast('更新成功');
+    } else {
+      await request(REQ_API, { method: 'POST', body: JSON.stringify(payload) });
+      showToast('创建成功');
+    }
+    closeModal($('reqMask'));
+    loadRequirements();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+/* 需求详情弹窗 */
+let reqDetailId = null; // 当前详情弹窗展示的需求 ID
+
+/* 详情弹窗字段：与新建表单一致的「字段名在上、值框在下」展现 */
+function reqDetailField(name, valueHtml, multi = false) {
+  return `<div class="detail-field">${name}<div class="detail-field-box${multi ? ' detail-field-multi' : ''}">${valueHtml}</div></div>`;
+}
+
+function reqDetailText(value, emptyText) {
+  return value ? escapeHtml(value) : `<span class="detail-empty">${emptyText}</span>`;
+}
+
+function openReqDetail(req) {
+  reqDetailId = req.id;
+  $('reqDetailTitle').textContent = `需求 ${reqNo(req)} 详情`;
+  $('reqDetailBody').innerHTML = `
+    ${reqDetailField('需求标题', escapeHtml(req.title))}
+    <div class="form-row">
+      ${reqDetailField('所属项目', req.projectId != null ? escapeHtml(projectName(req.projectId)) : '<span class="detail-empty">未关联</span>')}
+      ${reqDetailField('所属期', reqDetailText(req.period, '未填写'))}
+    </div>
+    <div class="form-row">
+      ${reqDetailField('优先级', `<span class="tag cp-${req.priority}">${REQ_PRIORITY_TEXT[req.priority]}</span>`)}
+      ${reqDetailField('状态', `<span class="tag rs-${req.status}">${REQ_STATUS_TEXT[req.status]}</span>`)}
+    </div>
+    <div class="form-row">
+      ${reqDetailField('所属模块', reqDetailText(req.module, '未填写'))}
+      ${reqDetailField('提出人', reqDetailText(req.proposer, '未填写'))}
+    </div>
+    ${reqDetailField('负责人', reqDetailText(req.assignee, '未指定'))}
+    ${reqDetailField('需求描述', reqDetailText(req.description, '无'), true)}
+    <div class="form-row">
+      ${reqDetailField('创建时间', formatTime(req.createdAt))}
+      ${reqDetailField('更新时间', formatTime(req.updatedAt))}
+    </div>`;
+  openModal($('reqDetailMask'));
+}
+
+$('btnReqDetailClose').addEventListener('click', () => closeModal($('reqDetailMask')));
+
+$('btnReqDetailEdit').addEventListener('click', () => {
+  closeModal($('reqDetailMask'));
+  const req = allRequirements.find((r) => r.id === reqDetailId);
+  if (req) openReqEditModal(req);
 });
 
 /* ===== 工具 ===== */

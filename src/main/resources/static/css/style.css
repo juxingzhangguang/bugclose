@@ -31,9 +31,10 @@ body {
   cursor: pointer;
   border-radius: 6px;
   color: #555;
+  transition: background .25s ease, color .25s ease, box-shadow .25s ease;
 }
 .nav-btn:hover { background: #f0f2f5; }
-.nav-btn.active { background: #d94f3d; color: #fff; }
+.nav-btn.active { background: #d94f3d; color: #fff; box-shadow: 0 2px 8px rgba(217,79,61,.25); }
 
 /* ===== 按钮 ===== */
 .btn {
@@ -58,6 +59,15 @@ body {
 /* ===== 视图容器 ===== */
 .view { padding: 20px 24px; max-width: 1280px; margin: 0 auto; }
 .view-wide { max-width: 1720px; }
+
+/* ===== 视图切换动画 ===== */
+@keyframes viewFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.view-animate-in {
+  animation: viewFadeIn .25s ease-out both;
+}
 
 /* Bug 列表：左侧项目栏 + 右侧列表（两列等高拉伸，底部对齐） */
 .view-with-sidebar { display: flex; gap: 16px; align-items: stretch; }
@@ -197,6 +207,14 @@ body {
 .cp-P1 { background: #fdf0e8; color: #e8705f; }
 .cp-P2 { background: #e8f1fd; color: #1a56db; }
 .cp-P3 { background: #eef2f5; color: #94a3b8; }
+
+/* 需求管理：状态标签 */
+.rs-DRAFT      { background: #eef2f5; color: #64748b; }
+.rs-REVIEWING  { background: #fef3e2; color: #c2710c; }
+.rs-APPROVED   { background: #e8f1fd; color: #1a56db; }
+.rs-IN_PROGRESS{ background: #f3e8fd; color: #7e22ce; }
+.rs-COMPLETED  { background: #e6f7ee; color: #05803c; }
+.rs-REJECTED   { background: #fde8e8; color: #c81e1e; }
 
 /* ===== 用例导入弹窗 ===== */
 .import-steps p { margin-bottom: 12px; color: #444; line-height: 1.8; }
@@ -356,6 +374,19 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .25s ease, visibility .25s ease;
+}
+.modal-mask.modal-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+.modal-mask.modal-visible .modal {
+  transform: scale(1);
+  opacity: 1;
 }
 .modal {
   background: #fff;
@@ -365,6 +396,9 @@ body {
   max-width: 92vw;
   max-height: 88vh;
   overflow-y: auto;
+  transform: scale(.92);
+  opacity: 0;
+  transition: transform .28s cubic-bezier(.4,0,.2,1), opacity .25s ease;
 }
 .modal-sm { width: 400px; }
 .modal-lg { width: 760px; }
@@ -598,12 +632,20 @@ body {
   position: fixed;
   top: 72px;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) translateY(-10px);
   background: rgba(40,40,40,.9);
   color: #fff;
   padding: 10px 22px;
   border-radius: 8px;
   z-index: 200;
   font-size: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease, transform .25s ease;
+}
+.toast.toast-show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
 }
 .toast.error { background: rgba(200,30,30,.92); }
