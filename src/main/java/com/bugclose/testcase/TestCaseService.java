@@ -1,5 +1,6 @@
 package com.bugclose.testcase;
 
+import com.bugclose.auth.AccessScope;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -21,9 +22,11 @@ import java.util.Objects;
 public class TestCaseService {
 
     private final TestCaseRepository testCaseRepository;
+    private final AccessScope accessScope;
 
-    public TestCaseService(TestCaseRepository testCaseRepository) {
+    public TestCaseService(TestCaseRepository testCaseRepository, AccessScope accessScope) {
         this.testCaseRepository = testCaseRepository;
+        this.accessScope = accessScope;
     }
 
     /** 条件查询：项目 / 执行状态 / 优先级 / 关键字（标题、模块） */
@@ -32,6 +35,9 @@ public class TestCaseService {
                                  TestCase.CasePriority priority, String keyword) {
         Specification<TestCase> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            if (!accessScope.isAllAccess()) {
+                predicates.add(root.get("projectId").in(accessScope.visibleProjectIds()));
+            }
             if (projectId != null) predicates.add(cb.equal(root.get("projectId"), projectId));
             if (status != null) predicates.add(cb.equal(root.get("status"), status));
             if (priority != null) predicates.add(cb.equal(root.get("priority"), priority));
@@ -48,12 +54,15 @@ public class TestCaseService {
 
     @Transactional(readOnly = true)
     public TestCase findById(Long id) {
-        return testCaseRepository.findById(id)
+        TestCase testCase = testCaseRepository.findById(id)
                 .orElseThrow(() -> new TestCaseNotFoundException(id));
+        accessScope.requireVisible(testCase.getProjectId());
+        return testCase;
     }
 
     public TestCase create(TestCase testCase) {
         validateRequired(testCase);
+        accessScope.requireProjectOnWrite(testCase.getProjectId());
         testCase.setId(null);
         testCase.setSeq(testCaseRepository.findMaxSeqInProject(testCase.getProjectId()) + 1);
         if (testCase.getPriority() == null) testCase.setPriority(TestCase.CasePriority.P2);
@@ -65,6 +74,7 @@ public class TestCaseService {
 
     public TestCase update(Long id, TestCase changes) {
         validateRequired(changes);
+        accessScope.requireProjectOnWrite(changes.getProjectId());
         TestCase testCase = findById(id);
         // 换了项目时重新分配新项目内的序号
         if (!Objects.equals(testCase.getProjectId(), changes.getProjectId())) {
@@ -99,7 +109,8 @@ public class TestCaseService {
     }
 
     public void delete(Long id) {
-        testCaseRepository.delete(findById(id));
+        TestCase testCase = findById(id); // 含可见性校验
+        testCaseRepository.delete(testCase);
     }
 
     /** 批量导入：逐条创建，失败的行收集错误信息返回，不影响其他行 */

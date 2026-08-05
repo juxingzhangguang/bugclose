@@ -1,5 +1,6 @@
 package com.bugclose.requirement;
 
+import com.bugclose.auth.AccessScope;
 import com.bugclose.project.ProjectRepository;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Sort;
@@ -21,10 +22,13 @@ public class RequirementService {
 
     private final RequirementRepository requirementRepository;
     private final ProjectRepository projectRepository;
+    private final AccessScope accessScope;
 
-    public RequirementService(RequirementRepository requirementRepository, ProjectRepository projectRepository) {
+    public RequirementService(RequirementRepository requirementRepository, ProjectRepository projectRepository,
+                              AccessScope accessScope) {
         this.requirementRepository = requirementRepository;
         this.projectRepository = projectRepository;
+        this.accessScope = accessScope;
     }
 
     /** 条件查询：项目 / 状态 / 优先级 / 所属期 / 关键字（标题、模块） */
@@ -33,6 +37,9 @@ public class RequirementService {
                                      Requirement.ReqPriority priority, String period, String keyword) {
         Specification<Requirement> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            if (!accessScope.isAllAccess()) {
+                predicates.add(root.get("projectId").in(accessScope.visibleProjectIds()));
+            }
             if (projectId != null) predicates.add(cb.equal(root.get("projectId"), projectId));
             if (status != null) predicates.add(cb.equal(root.get("status"), status));
             if (priority != null) predicates.add(cb.equal(root.get("priority"), priority));
@@ -50,8 +57,10 @@ public class RequirementService {
 
     @Transactional(readOnly = true)
     public Requirement findById(Long id) {
-        return requirementRepository.findById(id)
+        Requirement req = requirementRepository.findById(id)
                 .orElseThrow(() -> new RequirementNotFoundException(id));
+        accessScope.requireVisible(req.getProjectId());
+        return req;
     }
 
     public Requirement create(Requirement req) {
@@ -59,6 +68,7 @@ public class RequirementService {
         if (req.getProjectId() != null && !projectRepository.existsById(req.getProjectId())) {
             throw new IllegalArgumentException("关联项目不存在");
         }
+        accessScope.requireProjectOnWrite(req.getProjectId());
         req.setId(null);
         req.setSeq(requirementRepository.findMaxSeqInProject(req.getProjectId()) + 1);
         if (req.getPriority() == null) req.setPriority(Requirement.ReqPriority.P2);
@@ -70,12 +80,13 @@ public class RequirementService {
 
     public Requirement update(Long id, Requirement changes) {
         validateRequired(changes);
+        if (changes.getProjectId() != null && !projectRepository.existsById(changes.getProjectId())) {
+            throw new IllegalArgumentException("关联项目不存在");
+        }
+        accessScope.requireProjectOnWrite(changes.getProjectId());
         Requirement req = findById(id);
         // 换了项目时重新分配新项目内的序号
         if (!Objects.equals(req.getProjectId(), changes.getProjectId())) {
-            if (changes.getProjectId() != null && !projectRepository.existsById(changes.getProjectId())) {
-                throw new IllegalArgumentException("关联项目不存在");
-            }
             req.setSeq(requirementRepository.findMaxSeqInProject(changes.getProjectId()) + 1);
         }
         req.setProjectId(changes.getProjectId());
@@ -92,7 +103,8 @@ public class RequirementService {
     }
 
     public void delete(Long id) {
-        requirementRepository.delete(findById(id));
+        Requirement req = findById(id); // 含可见性校验
+        requirementRepository.delete(req);
     }
 
     /** 必填字段校验：与前端表单一致，防止直接调接口绕过 */

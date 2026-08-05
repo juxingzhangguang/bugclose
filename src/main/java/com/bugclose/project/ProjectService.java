@@ -1,5 +1,7 @@
 package com.bugclose.project;
 
+import com.bugclose.auth.AccessScope;
+import com.bugclose.auth.AuthContext;
 import com.bugclose.bug.BugRepository;
 import com.bugclose.requirement.RequirementRepository;
 import org.springframework.data.domain.Sort;
@@ -8,9 +10,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 /**
- * 项目业务逻辑：增删改查，删除前校验是否仍有关联 Bug
+ * 项目业务逻辑：增删改查，删除前校验是否仍有关联 Bug。
+ * 项目 CRUD 为管理员专用；列表按当前用户可见范围过滤（普通用户只看到绑定项目）。
  */
 @Service
 @Transactional
@@ -19,11 +23,14 @@ public class ProjectService {
     private final ProjectRepository projectRepository;
     private final BugRepository bugRepository;
     private final RequirementRepository requirementRepository;
+    private final AccessScope accessScope;
 
-    public ProjectService(ProjectRepository projectRepository, BugRepository bugRepository, RequirementRepository requirementRepository) {
+    public ProjectService(ProjectRepository projectRepository, BugRepository bugRepository,
+                          RequirementRepository requirementRepository, AccessScope accessScope) {
         this.projectRepository = projectRepository;
         this.bugRepository = bugRepository;
         this.requirementRepository = requirementRepository;
+        this.accessScope = accessScope;
     }
 
     /** 项目视图：附带关联 Bug 数量 */
@@ -33,7 +40,9 @@ public class ProjectService {
 
     @Transactional(readOnly = true)
     public List<ProjectView> listWithBugCount() {
+        Set<Long> visible = accessScope.visibleProjectIds();
         return projectRepository.findAll(Sort.by(Sort.Direction.ASC, "createdAt")).stream()
+                .filter(p -> visible == null || visible.contains(p.getId()))
                 .map(p -> new ProjectView(p.getId(), p.getName(), p.getCode(), p.getDescription(),
                         p.getCreatedAt(), bugRepository.countByProjectId(p.getId())))
                 .toList();
@@ -41,11 +50,14 @@ public class ProjectService {
 
     @Transactional(readOnly = true)
     public Project findById(Long id) {
-        return projectRepository.findById(id)
+        Project project = projectRepository.findById(id)
                 .orElseThrow(() -> new ProjectNotFoundException(id));
+        accessScope.requireVisible(id);
+        return project;
     }
 
     public Project create(Project project) {
+        AuthContext.requireAdmin();
         if (project.getName() == null || project.getName().isBlank()) {
             throw new IllegalStateException("项目名称不能为空");
         }
@@ -65,6 +77,7 @@ public class ProjectService {
     }
 
     public Project update(Long id, Project changes) {
+        AuthContext.requireAdmin();
         Project project = findById(id);
         if (changes.getName() == null || changes.getName().isBlank()) {
             throw new IllegalStateException("项目名称不能为空");
@@ -92,6 +105,7 @@ public class ProjectService {
     }
 
     public void delete(Long id) {
+        AuthContext.requireAdmin();
         Project project = findById(id);
         long bugCount = bugRepository.countByProjectId(id);
         if (bugCount > 0) {

@@ -1,5 +1,7 @@
 package com.bugclose.bug;
 
+import com.bugclose.auth.AccessDeniedException;
+import com.bugclose.auth.AccessScope;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -21,9 +23,11 @@ import java.util.Map;
 public class BugService {
 
     private final BugRepository bugRepository;
+    private final AccessScope accessScope;
 
-    public BugService(BugRepository bugRepository) {
+    public BugService(BugRepository bugRepository, AccessScope accessScope) {
         this.bugRepository = bugRepository;
+        this.accessScope = accessScope;
     }
 
     /** 条件查询：项目/状态/严重程度/优先级/处理人可选，关键字模糊匹配标题和描述 */
@@ -32,6 +36,10 @@ public class BugService {
                             Bug.Priority priority, String assignee, String keyword) {
         Specification<Bug> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            // 数据隔离：普通用户只能看到绑定项目内的 Bug（自动排除未关联项目的 Bug）
+            if (!accessScope.isAllAccess()) {
+                predicates.add(root.get("projectId").in(accessScope.visibleProjectIds()));
+            }
             if (projectId != null) {
                 predicates.add(cb.equal(root.get("projectId"), projectId));
             }
@@ -60,12 +68,15 @@ public class BugService {
 
     @Transactional(readOnly = true)
     public Bug findById(Long id) {
-        return bugRepository.findById(id)
+        Bug bug = bugRepository.findById(id)
                 .orElseThrow(() -> new BugNotFoundException(id));
+        accessScope.requireVisible(bug.getProjectId());
+        return bug;
     }
 
     public Bug create(Bug bug) {
         validateRequired(bug);
+        accessScope.requireProjectOnWrite(bug.getProjectId());
         bug.setId(null);
         bug.setSeq(bugRepository.findMaxSeqInProject(bug.getProjectId()) + 1);
         bug.setCreatedAt(LocalDateTime.now());
@@ -78,6 +89,7 @@ public class BugService {
 
     public Bug update(Long id, Bug changes) {
         validateRequired(changes);
+        accessScope.requireProjectOnWrite(changes.getProjectId());
         Bug bug = findById(id);
         // 换了项目时重新分配新项目内的序号
         if (!java.util.Objects.equals(bug.getProjectId(), changes.getProjectId())) {
@@ -113,16 +125,23 @@ public class BugService {
     }
 
     public void delete(Long id) {
-        if (!bugRepository.existsById(id)) {
-            throw new BugNotFoundException(id);
-        }
-        bugRepository.deleteById(id);
+        Bug bug = findById(id); // 含可见性校验
+        bugRepository.delete(bug);
     }
 
-    /** 统计：按状态、严重程度、处理人分组计数 */
+    /** 统计：按状态、严重程度、处理人分组计数（仅统计当前用户可见项目的 Bug） */
     @Transactional(readOnly = true)
     public Map<String, Object> statistics() {
-        List<Bug> all = bugRepository.findAll();
+        List<Bug> all = bugRepository.findAll().stream()
+                .filter(b -> {
+                    try {
+                        accessScope.requireVisible(b.getProjectId());
+                        return true;
+                    } catch (AccessDeniedException e) {
+                        return false;
+                    }
+                })
+                .toList();
 
         Map<Bug.BugStatus, Long> byStatus = new EnumMap<>(Bug.BugStatus.class);
         for (Bug.BugStatus s : Bug.BugStatus.values()) {

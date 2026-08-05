@@ -649,3 +649,60 @@ body {
   pointer-events: auto;
 }
 .toast.error { background: rgba(200,30,30,.92); }
+
+/* ===== 登录遮罩 ===== */
+.login-mask {
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.login-modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 32px 28px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  width: 360px;
+  max-width: 92vw;
+}
+.login-modal h2 { font-size: 20px; margin-bottom: 20px; color: #d94f3d; }
+.login-modal label { display: block; margin-bottom: 16px; font-size: 13px; color: #475569; }
+.login-modal input {
+  display: block; width: 100%; margin-top: 6px; padding: 9px 12px;
+  border: 1px solid #d8dee9; border-radius: 6px; font-size: 14px;
+}
+.login-modal input:focus { border-color: #d94f3d; outline: none; }
+.login-modal .modal-actions { margin-top: 8px; }
+.login-modal .modal-actions .btn { width: 100%; padding: 10px; }
+.login-hint { margin-top: 14px; font-size: 12px; color: #94a3b8; text-align: center; }
+
+/* ===== 顶栏用户区 ===== */
+.topbar-user { display: flex; align-items: center; gap: 12px; }
+.topbar-user .current-user { font-size: 13px; color: #475569; }
+
+/* ===== 系统管理 ===== */
+.admin-title { font-weight: 600; font-size: 16px; color: #333; }
+
+/* 用户表格角色标签 */
+.tag.role-admin { background: #7e22ce; color: #fff; }
+.tag.role-user { background: #1a56db; color: #fff; }
+
+/* 用户表单绑定项目区 */
+.user-project-bind {
+  display: flex; flex-wrap: wrap; gap: 10px 18px;
+  margin-top: 8px; padding: 12px;
+  border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc;
+}
+.user-project-bind .bind-item {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: #333; margin: 0; cursor: pointer;
+}
+.user-project-bind .bind-item input { cursor: pointer; }
+.user-enabled-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: #333; margin-bottom: 12px; cursor: pointer;
+}
+
+/* 系统管理只读提示 */
+.admin-hint { flex: 1; font-size: 12px; color: #94a3b8; }

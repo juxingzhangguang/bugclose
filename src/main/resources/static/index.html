@@ -4,19 +4,43 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BugClose - Bug 管理系统</title>
-  <link rel="stylesheet" href="css/style.css?v=20260733">
+  <link rel="stylesheet" href="css/style.css?v=20260805">
 </head>
 <body>
   <header class="topbar">
     <h1>🐞 BugClose</h1>
     <nav>
+      <button class="nav-btn" data-view="admin">系统管理</button>
       <button class="nav-btn active" data-view="list">Bug 列表</button>
       <button class="nav-btn" data-view="docs">文档库</button>
       <button class="nav-btn" data-view="cases">测试用例</button>
       <button class="nav-btn" data-view="requirements">需求管理</button>
       <button class="nav-btn" data-view="dashboard">统计看板</button>
     </nav>
+    <div class="topbar-user">
+      <span id="currentUser" class="current-user"></span>
+      <button id="btnLogout" class="btn btn-sm">登出</button>
+    </div>
   </header>
+
+  <!-- 登录遮罩 -->
+  <div id="loginMask" class="modal-mask modal-visible login-mask">
+    <div class="modal modal-sm login-modal">
+      <h2>登录 BugClose</h2>
+      <form id="loginForm">
+        <label>用户名 <span class="required">*</span>
+          <input type="text" id="loginUsername" required maxlength="50" autocomplete="username" placeholder="账号">
+        </label>
+        <label>密码 <span class="required">*</span>
+          <input type="password" id="loginPassword" required maxlength="100" autocomplete="current-password" placeholder="密码">
+        </label>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">登录</button>
+        </div>
+        <p class="login-hint">首次使用默认管理员：admin / admin123</p>
+      </form>
+    </div>
+  </div>
 
   <!-- Bug 列表视图：左侧项目栏 + 右侧列表，下方项目汇总分析 -->
   <main id="viewList" class="view view-wide">
@@ -816,6 +840,70 @@
     <img id="imgPreviewLarge" class="img-preview-large" alt="图片预览">
   </div>
 
-  <script src="js/app.js?v=20260733"></script>
+  <!-- 系统管理视图 -->
+  <main id="viewAdmin" class="view hidden">
+    <section class="filter-bar">
+      <span class="admin-title">用户管理</span>
+      <span id="adminHint" class="admin-hint"></span>
+      <button id="btnNewUser" class="btn btn-primary">+ 新建用户</button>
+    </section>
+    <table class="bug-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>用户名</th>
+          <th>显示名</th>
+          <th>角色</th>
+          <th>启用</th>
+          <th>绑定项目</th>
+          <th>创建时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="userTbody"></tbody>
+    </table>
+  </main>
+
+  <!-- 新建/编辑用户弹窗 -->
+  <div id="userMask" class="modal-mask">
+    <div class="modal modal-lg">
+      <h2 id="userModalTitle">新建用户</h2>
+      <form id="userForm">
+        <input type="hidden" id="userId">
+        <div class="form-row">
+          <label>用户名 <span class="required">*</span>
+            <input type="text" id="userUsername" required maxlength="50" placeholder="登录账号">
+          </label>
+          <label>显示名
+            <input type="text" id="userDisplayName" maxlength="50" placeholder="展示用名称，可空">
+          </label>
+        </div>
+        <div class="form-row">
+          <label>密码 <span class="required" id="userPwdRequired">*</span>
+            <input type="password" id="userPassword" maxlength="100" placeholder="至少 4 位；编辑时留空则不变">
+          </label>
+          <label>角色
+            <select id="userRole">
+              <option value="USER" selected>普通用户</option>
+              <option value="ADMIN">管理员</option>
+            </select>
+          </label>
+        </div>
+        <label class="user-enabled-label">
+          <input type="checkbox" id="userEnabled" checked>
+          启用
+        </label>
+        <label>绑定项目（普通用户只能看到勾选项目的数据；管理员忽略此项）
+          <div id="userProjectBind" class="user-project-bind"></div>
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="btnUserCancel" class="btn">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/app.js?v=20260805"></script>
 </body>
 </html>

@@ -4,6 +4,21 @@ const PROJECT_API = '/api/projects';
 const DOC_API = '/api/docs';
 const CASE_API = '/api/testcases';
 const REQ_API = '/api/requirements';
+const AUTH_API = '/api/auth';
+const USER_API = '/api/users';
+
+const TOKEN_KEY = 'bugclose_token';
+
+/* ===== 当前登录用户信息 ===== */
+let currentUser = null; // {id, username, displayName, role, allProjects, allowedProjectIds}
+
+function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+function setToken(token) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
 
 const SEVERITY_TEXT = { CRITICAL: '致命', HIGH: '严重', MEDIUM: '一般', LOW: '轻微' };
 const PRIORITY_TEXT = { URGENT: '紧急', HIGH: '高', MEDIUM: '中', LOW: '低' };
@@ -65,6 +80,7 @@ const viewMap = {
   docs: 'viewDocs',
   cases: 'viewCases',
   requirements: 'viewRequirements',
+  admin: 'viewAdmin',
 };
 let currentViewId = 'viewList';
 let viewSwitching = false;
@@ -98,20 +114,44 @@ document.querySelectorAll('.nav-btn').forEach((btn) => {
     else if (view === 'docs') loadDocs();
     else if (view === 'cases') loadCases();
     else if (view === 'requirements') loadRequirements();
+    else if (view === 'admin') loadUsers();
     else loadBugs();
   });
 });
 
 /* ===== 请求封装 ===== */
 async function request(url, options = {}) {
-  const resp = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  const token = getToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const resp = await fetch(url, { ...options, headers });
+  if (resp.status === 401) {
+    setToken(null);
+    showLogin();
+    throw new Error('登录已过期，请重新登录');
+  }
   if (resp.status === 204) return null;
   const data = await resp.json().catch(() => null);
   if (!resp.ok) {
     throw new Error((data && data.error) || `请求失败 (${resp.status})`);
+  }
+  return data;
+}
+
+/* 带 token 的 multipart 上传（不能带 JSON Content-Type） */
+async function uploadRequest(url, formData) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const resp = await fetch(url, { method: 'POST', body: formData, headers });
+  if (resp.status === 401) {
+    setToken(null);
+    showLogin();
+    throw new Error('登录已过期，请重新登录');
+  }
+  const data = await resp.json().catch(() => null);
+  if (!resp.ok) {
+    throw new Error((data && data.error) || `上传失败 (${resp.status})`);
   }
   return data;
 }
@@ -610,7 +650,10 @@ $('bugImageInput').addEventListener('change', async (e) => {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const resp = await fetch('/api/uploads', { method: 'POST', body: fd });
+      const upHeaders = {};
+      const tok = getToken();
+      if (tok) upHeaders['Authorization'] = `Bearer ${tok}`;
+      const resp = await fetch('/api/uploads', { method: 'POST', body: fd, headers: upHeaders });
       const data = await resp.json().catch(() => null);
       if (!resp.ok) throw new Error((data && data.error) || `上传失败 (${resp.status})`);
       formImages.push(data.url);
@@ -1206,16 +1249,6 @@ $('docHisTbody').addEventListener('click', (e) => {
   if (!btn) return;
   window.open(`${DOC_API}/${btn.dataset.doc}/versions/${btn.dataset.ver}/download`, '_blank');
 });
-
-/* multipart 上传请求（不能带 JSON Content-Type） */
-async function uploadRequest(url, formData) {
-  const resp = await fetch(url, { method: 'POST', body: formData });
-  const data = await resp.json().catch(() => null);
-  if (!resp.ok) {
-    throw new Error((data && data.error) || `上传失败 (${resp.status})`);
-  }
-  return data;
-}
 
 /* 文件大小友好显示 */
 function formatSize(bytes) {
@@ -2187,11 +2220,221 @@ function formatTime(isoStr) {
 }
 
 /* ===== 初始化 ===== */
-(async () => {
-  try {
-    await refreshProjects();
-  } catch {
-    /* 项目加载失败不阻塞 Bug 列表 */
+async function init() {
+  const token = getToken();
+  if (!token) {
+    showLogin();
+    return;
   }
-  loadBugs();
-})();
+  try {
+    currentUser = await request(`${AUTH_API}/me`);
+    applyCurrentUser();
+    await refreshProjects();
+    loadBugs();
+  } catch {
+    showLogin();
+  }
+}
+
+function showLogin() {
+  currentUser = null;
+  $('loginMask').classList.add('modal-visible');
+  $('loginMask').classList.remove('hidden');
+}
+
+function hideLogin() {
+  closeModal($('loginMask'));
+}
+
+function applyCurrentUser() {
+  if (!currentUser) return;
+  $('currentUser').textContent = currentUser.displayName || currentUser.username || '';
+  const isAdmin = currentUser.role === 'ADMIN';
+  // 新建用户按钮仅管理员可见（普通用户可进系统管理查看协作成员，但不能增删改）
+  document.querySelectorAll('#btnNewUser').forEach((b) => {
+    b.classList.toggle('hidden', !isAdmin);
+  });
+  // 新建项目按钮（各侧栏）按角色显隐
+  document.querySelectorAll('.proj-add-btn').forEach((b) => {
+    b.classList.toggle('hidden', !isAdmin);
+  });
+}
+
+/* 登录提交 */
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = $('loginUsername').value.trim();
+  const password = $('loginPassword').value;
+  if (!username || !password) return showToast('请填写用户名和密码', true);
+  try {
+    const resp = await fetch(`${AUTH_API}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok) throw new Error((data && data.error) || `登录失败 (${resp.status})`);
+    setToken(data.token);
+    currentUser = data;
+    hideLogin();
+    applyCurrentUser();
+    try { await refreshProjects(); } catch {}
+    loadBugs();
+    showToast(`欢迎，${currentUser.displayName || currentUser.username}`);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+/* 登出 */
+$('btnLogout').addEventListener('click', async () => {
+  try { await request(`${AUTH_API}/logout`, { method: 'POST' }); } catch {}
+  setToken(null);
+  showLogin();
+  $('loginPassword').value = '';
+});
+
+/* ===== 用户管理 ===== */
+let allUsers = [];
+
+async function loadUsers() {
+  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+  $('adminHint').textContent = isAdmin ? '' : '仅显示与你共用项目的协作成员（只读）';
+  try {
+    allUsers = await request(USER_API);
+    renderUsers();
+  } catch (e) {
+    showToast(e.message, true);
+  }
+}
+
+function renderUsers() {
+  const tbody = $('userTbody');
+  tbody.innerHTML = '';
+  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+  for (const u of allUsers) {
+    const tr = document.createElement('tr');
+    const projText = (u.projects || []).map((p) => escapeHtml(p.name)).join('、') || '<span class="detail-empty">无</span>';
+    const ops = isAdmin
+      ? `<button class="btn btn-sm" data-op="edit" data-id="${u.id}">编辑</button>
+         <button class="btn btn-sm btn-danger" data-op="del" data-id="${u.id}">删除</button>`
+      : '<span class="detail-empty">仅查看</span>';
+    tr.innerHTML = `
+      <td>${u.id}</td>
+      <td>${escapeHtml(u.username)}</td>
+      <td>${escapeHtml(u.displayName || '-')}</td>
+      <td><span class="tag ${u.role === 'ADMIN' ? 'role-admin' : 'role-user'}">${userRoleText(u)}</span></td>
+      <td>${u.enabled ? '<span class="tag st-RESOLVED">启用</span>' : '<span class="tag st-CLOSED">禁用</span>'}</td>
+      <td class="bug-title-cell">${projText}</td>
+      <td>${formatTime(u.createdAt)}</td>
+      <td class="op-cell">${ops}</td>`;
+    tbody.appendChild(tr);
+  }
+  if (!allUsers.length) {
+    const tr = document.createElement('tr');
+    tr.className = 'empty-row';
+    tr.innerHTML = isAdmin
+      ? '<td colspan="8">暂无用户，点右上方「+ 新建用户」创建</td>'
+      : '<td colspan="8">暂无与你共用项目的协作成员</td>';
+    tbody.appendChild(tr);
+  }
+}
+
+// 普通用户看到的都是协作成员（非管理员），统一显示为「普通用户」；
+// 管理员视图下管理员本应显示「管理员」，但当前 list 已过滤掉管理员对普通用户不可见，
+// 故此处对管理员账号也标注「普通用户」仅出现在管理员自己的列表里——
+// 为避免误导，管理员列表里 role===ADMIN 显示「管理员」。
+function userRoleText(u) {
+  return u.role === 'ADMIN' ? '管理员' : '普通用户';
+}
+
+$('userTbody').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-op]');
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  const u = allUsers.find((x) => x.id === id);
+  if (btn.dataset.op === 'edit') {
+    openUserEditModal(u);
+  } else if (btn.dataset.op === 'del') {
+    if (!confirm(`确定删除用户「${u ? u.username : '#' + id}」吗？`)) return;
+    try {
+      await request(`${USER_API}/${id}`, { method: 'DELETE' });
+      showToast('删除成功');
+      loadUsers();
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  }
+});
+
+$('btnNewUser').addEventListener('click', () => {
+  $('userModalTitle').textContent = '新建用户';
+  $('userForm').reset();
+  $('userId').value = '';
+  $('userPwdRequired').classList.remove('hidden');
+  $('userPassword').required = true;
+  renderUserProjectBind([]);
+  openModal($('userMask'));
+});
+
+function openUserEditModal(u) {
+  $('userModalTitle').textContent = `编辑用户 ${u.username}`;
+  $('userForm').reset();
+  $('userId').value = u.id;
+  $('userUsername').value = u.username;
+  $('userDisplayName').value = u.displayName || '';
+  $('userRole').value = u.role;
+  $('userEnabled').checked = u.enabled;
+  $('userPwdRequired').classList.add('hidden');
+  $('userPassword').required = false;
+  $('userPassword').value = '';
+  renderUserProjectBind((u.projects || []).map((p) => p.id));
+  openModal($('userMask'));
+}
+
+function renderUserProjectBind(checkedIds) {
+  const box = $('userProjectBind');
+  box.innerHTML = '';
+  if (!projects.length) {
+    box.innerHTML = '<span class="detail-empty">暂无项目，请先在 Bug 列表左侧创建</span>';
+    return;
+  }
+  const set = new Set(checkedIds);
+  for (const p of projects) {
+    const label = document.createElement('label');
+    label.className = 'bind-item';
+    label.innerHTML = `<input type="checkbox" value="${p.id}" ${set.has(p.id) ? 'checked' : ''}> ${escapeHtml(p.name)}`;
+    box.appendChild(label);
+  }
+}
+
+$('btnUserCancel').addEventListener('click', () => closeModal($('userMask')));
+
+$('userForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('userId').value;
+  const projectIds = [...$('userProjectBind').querySelectorAll('input:checked')].map((c) => Number(c.value));
+  const payload = {
+    username: $('userUsername').value.trim(),
+    password: $('userPassword').value,
+    displayName: $('userDisplayName').value.trim(),
+    role: $('userRole').value,
+    enabled: $('userEnabled').checked,
+    projectIds,
+  };
+  try {
+    if (id) {
+      await request(`${USER_API}/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      showToast('更新成功');
+    } else {
+      await request(USER_API, { method: 'POST', body: JSON.stringify(payload) });
+      showToast('创建成功');
+    }
+    closeModal($('userMask'));
+    loadUsers();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+init();

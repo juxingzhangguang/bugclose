@@ -1,5 +1,6 @@
 package com.bugclose.doc;
 
+import com.bugclose.auth.AccessScope;
 import com.bugclose.project.ProjectRepository;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Sort;
@@ -38,13 +39,16 @@ public class DocService {
     private final DocumentRepository documentRepository;
     private final DocumentVersionRepository versionRepository;
     private final ProjectRepository projectRepository;
+    private final AccessScope accessScope;
 
     public DocService(DocumentRepository documentRepository,
                       DocumentVersionRepository versionRepository,
-                      ProjectRepository projectRepository) {
+                      ProjectRepository projectRepository,
+                      AccessScope accessScope) {
         this.documentRepository = documentRepository;
         this.versionRepository = versionRepository;
         this.projectRepository = projectRepository;
+        this.accessScope = accessScope;
     }
 
     /** 条件查询：项目/分类可选，关键字模糊匹配名称和说明，返回含项目名与最新版本信息的视图 */
@@ -52,6 +56,9 @@ public class DocService {
     public List<Map<String, Object>> search(Long projectId, Document.DocCategory category, String keyword) {
         Specification<Document> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            if (!accessScope.isAllAccess()) {
+                predicates.add(root.get("projectId").in(accessScope.visibleProjectIds()));
+            }
             if (projectId != null) {
                 predicates.add(cb.equal(root.get("projectId"), projectId));
             }
@@ -76,6 +83,7 @@ public class DocService {
         if (title == null || title.isBlank()) {
             throw new IllegalArgumentException("文档名称不能为空");
         }
+        accessScope.requireProjectOnWrite(projectId);
         validateFile(file);
         LocalDateTime now = LocalDateTime.now();
 
@@ -118,6 +126,10 @@ public class DocService {
     public DownloadFile resolveDownload(Long docId, Long versionId) {
         DocumentVersion version = versionRepository.findByIdAndDocumentId(versionId, docId)
                 .orElseThrow(() -> new DocumentNotFoundException("版本不存在: id=" + versionId));
+        // 校验文档所属项目对当前用户可见
+        Long projectId = documentRepository.findById(docId)
+                .map(Document::getProjectId).orElse(null);
+        accessScope.requireVisible(projectId);
         Path path = DOC_DIR.resolve(version.getStoredName());
         if (!Files.exists(path)) {
             throw new DocumentNotFoundException("文件已丢失: " + version.getOriginalFilename());
@@ -132,6 +144,7 @@ public class DocService {
         if (title == null || title.isBlank()) {
             throw new IllegalArgumentException("文档名称不能为空");
         }
+        accessScope.requireProjectOnWrite(projectId);
         doc.setTitle(title.trim());
         if (category != null) {
             doc.setCategory(category);
@@ -159,8 +172,10 @@ public class DocService {
     }
 
     private Document findById(Long id) {
-        return documentRepository.findById(id)
+        Document doc = documentRepository.findById(id)
                 .orElseThrow(() -> new DocumentNotFoundException("文档不存在: id=" + id));
+        accessScope.requireVisible(doc.getProjectId());
+        return doc;
     }
 
     /** 校验上传文件：非空、大小、扩展名白名单 */
