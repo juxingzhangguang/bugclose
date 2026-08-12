@@ -1,4 +1,4 @@
-/* BugClose 前端逻辑 */
+﻿/* BugClose 前端逻辑 */
 const API = '/api/bugs';
 const PROJECT_API = '/api/projects';
 const DOC_API = '/api/docs';
@@ -6,11 +6,15 @@ const CASE_API = '/api/testcases';
 const REQ_API = '/api/requirements';
 const AUTH_API = '/api/auth';
 const USER_API = '/api/users';
+const ROLE_API = '/api/roles';
 
 const TOKEN_KEY = 'bugclose_token';
+const LOGIN_PAGE = '/login.html';
 
 /* ===== 当前登录用户信息 ===== */
 let currentUser = null; // {id, username, displayName, role, allProjects, allowedProjectIds}
+var allUsers = [];
+let roles = []; // 角色缓存：{id, code, name, description, builtin, userCount}
 
 function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -82,42 +86,105 @@ const viewMap = {
   requirements: 'viewRequirements',
   admin: 'viewAdmin',
 };
-let currentViewId = 'viewList';
+let currentViewId = 'viewAdmin';
 let viewSwitching = false;
 
+/* 点击水波纹动画（导航按钮 / 二级菜单共用） */
+function spawnRipple(btn, e) {
+  const rect = btn.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height);
+  const ripple = document.createElement('span');
+  ripple.className = 'tab-ripple';
+  ripple.style.width = ripple.style.height = `${size}px`;
+  ripple.style.left = `${e.clientX - rect.left - size / 2}px`;
+  ripple.style.top = `${e.clientY - rect.top - size / 2}px`;
+  btn.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 650);
+}
+
 document.querySelectorAll('.nav-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    if (viewSwitching) return;
+  btn.addEventListener('click', (e) => {
+    spawnRipple(btn, e);
     const view = btn.dataset.view;
-    const newViewId = viewMap[view];
-    if (newViewId === currentViewId) return;
-
-    document.querySelectorAll('.nav-btn').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-
-    const oldView = $(currentViewId);
-    const newView = $(newViewId);
-    viewSwitching = true;
-
-    // 隐藏旧视图，显示新视图并触发淡入动画
-    oldView.classList.add('hidden');
-    newView.classList.remove('hidden');
-    newView.classList.add('view-animate-in');
-
-    setTimeout(() => {
-      newView.classList.remove('view-animate-in');
-      viewSwitching = false;
-    }, 250);
-
-    currentViewId = newViewId;
-    if (view === 'dashboard') loadStatistics();
-    else if (view === 'docs') loadDocs();
-    else if (view === 'cases') loadCases();
-    else if (view === 'requirements') loadRequirements();
-    else if (view === 'admin') loadUsers();
-    else loadBugs();
+    if (view === 'admin') {
+      // 系统管理：点一下展开子菜单，再点一下折叠；从其他视图切入时切回系统管理
+      const sub = $('adminSub');
+      const expanded = sub.classList.toggle('open');
+      btn.classList.toggle('expanded', expanded);
+      if (!expanded) {
+        if (currentViewId === 'viewAdmin') return;
+      }
+      switchView('admin');
+      return;
+    }
+    // 其他模块：收起系统管理子菜单
+    const adminBtn = document.querySelector('.nav-btn[data-view="admin"]');
+    $('adminSub').classList.remove('open');
+    adminBtn.classList.remove('expanded');
+    switchView(view);
   });
 });
+
+function switchView(view) {
+  const newViewId = viewMap[view];
+  if (viewSwitching || newViewId === currentViewId) return;
+
+  document.querySelectorAll('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
+
+  const oldView = $(currentViewId);
+  const newView = $(newViewId);
+  viewSwitching = true;
+
+  // 隐藏旧视图，显示新视图并触发淡入动画
+  oldView.classList.add('hidden');
+  newView.classList.remove('hidden');
+  newView.classList.add('view-animate-in');
+
+  setTimeout(() => {
+    newView.classList.remove('view-animate-in');
+    viewSwitching = false;
+  }, 250);
+
+  currentViewId = newViewId;
+  if (view === 'dashboard') loadStatistics();
+  else if (view === 'docs') loadDocs();
+  else if (view === 'cases') loadCases();
+  else if (view === 'requirements') loadRequirements();
+  else if (view === 'admin') loadAdminTab(currentTab);
+  else loadBugs();
+}
+
+/* ===== 系统管理二级菜单（侧栏） ===== */
+let currentTab = 'users'; // users / roles / projects
+
+document.querySelectorAll('.nav-sub-btn').forEach((btn) => {
+  btn.addEventListener('click', (e) => {
+    spawnRipple(btn, e);
+    const tab = btn.dataset.tab;
+    if (tab === currentTab) {
+      // 已选中则确保系统管理视图可见（如当前在其他视图）
+      if (currentViewId !== 'viewAdmin') switchView('admin');
+      return;
+    }
+    switchAdminTab(tab, btn);
+    switchView('admin');
+  });
+});
+
+function switchAdminTab(tab, btn) {
+  currentTab = tab;
+  document.querySelectorAll('.nav-sub-btn').forEach((b) => b.classList.toggle('active', b === btn));
+  document.querySelectorAll('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === 'admin'));
+  $('adminUsers').classList.toggle('hidden', tab !== 'users');
+  $('adminRoles').classList.toggle('hidden', tab !== 'roles');
+  $('adminProjects').classList.toggle('hidden', tab !== 'projects');
+}
+
+function loadAdminTab(tab) {
+  if (tab === 'roles') loadRoles();
+  else if (tab === 'projects') loadAdminProjects();
+  else loadUsers();
+}
 
 /* ===== 请求封装 ===== */
 async function request(url, options = {}) {
@@ -127,7 +194,7 @@ async function request(url, options = {}) {
   const resp = await fetch(url, { ...options, headers });
   if (resp.status === 401) {
     setToken(null);
-    showLogin();
+    redirectToLogin();
     throw new Error('登录已过期，请重新登录');
   }
   if (resp.status === 204) return null;
@@ -146,7 +213,7 @@ async function uploadRequest(url, formData) {
   const resp = await fetch(url, { method: 'POST', body: formData, headers });
   if (resp.status === 401) {
     setToken(null);
-    showLogin();
+    redirectToLogin();
     throw new Error('登录已过期，请重新登录');
   }
   const data = await resp.json().catch(() => null);
@@ -808,6 +875,8 @@ $('projForm').addEventListener('submit', async (e) => {
     loadBugs();
     // 文档库视图打开时同步刷新文档列表（项目名、侧栏计数）
     if (!$('viewDocs').classList.contains('hidden')) loadDocs();
+    // 系统管理「项目管理」tab 打开时同步刷新表格
+    if (!$('adminProjects').classList.contains('hidden')) renderAdminProjects();
   } catch (err) {
     showToast(err.message, true);
   }
@@ -2223,29 +2292,32 @@ function formatTime(isoStr) {
 async function init() {
   const token = getToken();
   if (!token) {
-    showLogin();
+    redirectToLogin();
     return;
   }
   try {
     currentUser = await request(`${AUTH_API}/me`);
     applyCurrentUser();
     await refreshProjects();
-    loadBugs();
+    await loadRoles();
+    loadUsers();
   } catch {
-    showLogin();
+    redirectToLogin();
   }
 }
 
+function redirectToLogin() {
+  const next = encodeURIComponent(location.pathname + location.search + location.hash);
+  location.replace(`${LOGIN_PAGE}?next=${next}`);
+}
 function showLogin() {
   currentUser = null;
-  $('loginMask').classList.add('modal-visible');
-  $('loginMask').classList.remove('hidden');
+  redirectToLogin();
 }
 
 function hideLogin() {
-  closeModal($('loginMask'));
+  return;
 }
-
 function applyCurrentUser() {
   if (!currentUser) return;
   $('currentUser').textContent = currentUser.displayName || currentUser.username || '';
@@ -2258,45 +2330,37 @@ function applyCurrentUser() {
   document.querySelectorAll('.proj-add-btn').forEach((b) => {
     b.classList.toggle('hidden', !isAdmin);
   });
+  // 非管理员隐藏「角色管理」「项目管理」二级菜单，只保留用户管理（只读）
+  document.querySelectorAll('.nav-sub-btn').forEach((b) => {
+    b.classList.toggle('hidden', !isAdmin && b.dataset.tab !== 'users');
+  });
+  if (!isAdmin && currentTab !== 'users') {
+    currentTab = 'users';
+    document.querySelectorAll('.nav-sub-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === 'users'));
+    $('adminUsers').classList.remove('hidden');
+    $('adminRoles').classList.add('hidden');
+    $('adminProjects').classList.add('hidden');
+  }
 }
 
 /* 登录提交 */
-$('loginForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const username = $('loginUsername').value.trim();
-  const password = $('loginPassword').value;
-  if (!username || !password) return showToast('请填写用户名和密码', true);
-  try {
-    const resp = await fetch(`${AUTH_API}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-    const data = await resp.json().catch(() => null);
-    if (!resp.ok) throw new Error((data && data.error) || `登录失败 (${resp.status})`);
-    setToken(data.token);
-    currentUser = data;
-    hideLogin();
-    applyCurrentUser();
-    try { await refreshProjects(); } catch {}
-    loadBugs();
-    showToast(`欢迎，${currentUser.displayName || currentUser.username}`);
-  } catch (err) {
-    showToast(err.message, true);
-  }
-});
+/* Login is handled on the dedicated login page. */
 
 /* 登出 */
-$('btnLogout').addEventListener('click', async () => {
-  try { await request(`${AUTH_API}/logout`, { method: 'POST' }); } catch {}
+$('btnLogout').addEventListener('click', () => {
+  const token = getToken();
   setToken(null);
-  showLogin();
-  $('loginPassword').value = '';
+  currentUser = null;
+  if (token) {
+    fetch(`${AUTH_API}/logout`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {});
+  }
+  redirectToLogin();
 });
 
 /* ===== 用户管理 ===== */
-let allUsers = [];
-
 async function loadUsers() {
   const isAdmin = currentUser && currentUser.role === 'ADMIN';
   $('adminHint').textContent = isAdmin ? '' : '仅显示与你共用项目的协作成员（只读）';
@@ -2323,7 +2387,7 @@ function renderUsers() {
       <td>${u.id}</td>
       <td>${escapeHtml(u.username)}</td>
       <td>${escapeHtml(u.displayName || '-')}</td>
-      <td><span class="tag ${u.role === 'ADMIN' ? 'role-admin' : 'role-user'}">${userRoleText(u)}</span></td>
+      <td><span class="tag ${u.role === 'ADMIN' ? 'role-admin' : 'role-user'}">${userRoleText(u.role)}</span></td>
       <td>${u.enabled ? '<span class="tag st-RESOLVED">启用</span>' : '<span class="tag st-CLOSED">禁用</span>'}</td>
       <td class="bug-title-cell">${projText}</td>
       <td>${formatTime(u.createdAt)}</td>
@@ -2340,12 +2404,11 @@ function renderUsers() {
   }
 }
 
-// 普通用户看到的都是协作成员（非管理员），统一显示为「普通用户」；
-// 管理员视图下管理员本应显示「管理员」，但当前 list 已过滤掉管理员对普通用户不可见，
-// 故此处对管理员账号也标注「普通用户」仅出现在管理员自己的列表里——
-// 为避免误导，管理员列表里 role===ADMIN 显示「管理员」。
-function userRoleText(u) {
-  return u.role === 'ADMIN' ? '管理员' : '普通用户';
+/* 角色编码 → 显示名：优先取角色缓存里的名称，取不到时回退到编码本身 */
+function userRoleText(code) {
+  if (!code) return '普通用户';
+  const r = roles.find((x) => x.code === code);
+  return r ? r.name : code;
 }
 
 $('userTbody').addEventListener('click', async (e) => {
@@ -2373,6 +2436,7 @@ $('btnNewUser').addEventListener('click', () => {
   $('userId').value = '';
   $('userPwdRequired').classList.remove('hidden');
   $('userPassword').required = true;
+  fillRoleSelect();
   renderUserProjectBind([]);
   openModal($('userMask'));
 });
@@ -2383,13 +2447,28 @@ function openUserEditModal(u) {
   $('userId').value = u.id;
   $('userUsername').value = u.username;
   $('userDisplayName').value = u.displayName || '';
-  $('userRole').value = u.role;
+  fillRoleSelect(u.role);
   $('userEnabled').checked = u.enabled;
   $('userPwdRequired').classList.add('hidden');
   $('userPassword').required = false;
   $('userPassword').value = '';
   renderUserProjectBind((u.projects || []).map((p) => p.id));
   openModal($('userMask'));
+}
+
+/* 用角色缓存填充用户表单的角色下拉（selected 为要选中的角色编码） */
+function fillRoleSelect(selected) {
+  const sel = $('userRole');
+  const prev = sel.value || selected || '';
+  sel.innerHTML = '';
+  for (const r of roles) {
+    const opt = document.createElement('option');
+    opt.value = r.code;
+    opt.textContent = `${r.name} (${r.code})`;
+    sel.appendChild(opt);
+  }
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+  else sel.value = roles.length ? roles[0].code : '';
 }
 
 function renderUserProjectBind(checkedIds) {
@@ -2437,4 +2516,171 @@ $('userForm').addEventListener('submit', async (e) => {
   }
 });
 
+/* ===== 角色管理 ===== */
+async function loadRoles() {
+  try {
+    roles = await request(ROLE_API);
+    renderRoles();
+  } catch (e) {
+    showToast(e.message, true);
+  }
+}
+
+function renderRoles() {
+  const tbody = $('roleTbody');
+  tbody.innerHTML = '';
+  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+  for (const r of roles) {
+    const tr = document.createElement('tr');
+    let ops = '<span class="detail-empty">—</span>';
+    if (isAdmin) {
+      // 内置角色可编辑名称/描述但不可删除；自定义角色可编辑可删除
+      ops = `<button class="btn btn-sm" data-op="edit" data-id="${r.id}">编辑</button>` +
+        (r.builtin ? '' : ` <button class="btn btn-sm btn-danger" data-op="del" data-id="${r.id}">删除</button>`);
+    }
+    tr.innerHTML = `
+      <td>${r.id}</td>
+      <td><code class="role-code">${escapeHtml(r.code)}</code></td>
+      <td>${escapeHtml(r.name)}</td>
+      <td>${escapeHtml(r.description || '-')}</td>
+      <td><span class="tag ${r.builtin ? 'role-builtin' : 'role-custom'}">${r.builtin ? '内置' : '自定义'}</span></td>
+      <td>${r.userCount}</td>
+      <td>${formatTime(r.createdAt)}</td>
+      <td class="op-cell">${ops}</td>`;
+    tbody.appendChild(tr);
+  }
+  if (!roles.length) {
+    const tr = document.createElement('tr');
+    tr.className = 'empty-row';
+    tr.innerHTML = '<td colspan="8">暂无角色</td>';
+    tbody.appendChild(tr);
+  }
+}
+
+$('roleTbody').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-op]');
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  const r = roles.find((x) => x.id === id);
+  if (btn.dataset.op === 'edit') {
+    $('roleModalTitle').textContent = `编辑角色 ${r.code}`;
+    $('roleId').value = r.id;
+    $('roleCode').value = r.code;
+    $('roleCode').readOnly = true;
+    $('roleName').value = r.name;
+    $('roleDesc').value = r.description || '';
+    openModal($('roleMask'));
+  } else if (btn.dataset.op === 'del') {
+    if (!confirm(`确定删除角色「${r ? r.name : '#' + id}」吗？`)) return;
+    try {
+      await request(`${ROLE_API}/${id}`, { method: 'DELETE' });
+      showToast('删除成功');
+      loadRoles();
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  }
+});
+
+$('btnNewRole').addEventListener('click', () => {
+  $('roleModalTitle').textContent = '新建角色';
+  $('roleForm').reset();
+  $('roleId').value = '';
+  $('roleCode').readOnly = false;
+  openModal($('roleMask'));
+});
+
+$('btnRoleCancel').addEventListener('click', () => closeModal($('roleMask')));
+
+$('roleForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('roleId').value;
+  const payload = {
+    code: $('roleCode').value.trim().toUpperCase(),
+    name: $('roleName').value.trim(),
+    description: $('roleDesc').value.trim(),
+  };
+  if (!/^[A-Z][A-Z0-9_]{0,19}$/.test(payload.code)) {
+    showToast('角色编码需为大写字母开头，只能含大写字母/数字/下划线，最长 20 位', true);
+    return;
+  }
+  try {
+    if (id) {
+      await request(`${ROLE_API}/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      showToast('更新成功');
+    } else {
+      await request(ROLE_API, { method: 'POST', body: JSON.stringify(payload) });
+      showToast('创建成功');
+    }
+    closeModal($('roleMask'));
+    loadRoles();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+/* ===== 项目管理（系统管理二级 tab） ===== */
+function loadAdminProjects() {
+  $('adminProjHint').textContent = `共 ${projects.length} 个项目`;
+  renderAdminProjects();
+}
+
+function renderAdminProjects() {
+  const tbody = $('adminProjTbody');
+  tbody.innerHTML = '';
+  for (const p of projects) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${p.id}</td>
+      <td>${escapeHtml(p.name)}</td>
+      <td><code class="role-code">${escapeHtml(p.code || '-')}</code></td>
+      <td class="bug-title-cell">${escapeHtml(p.description || '-')}</td>
+      <td>${p.bugCount ?? '-'}</td>
+      <td>${formatTime(p.createdAt)}</td>
+      <td class="op-cell">
+        <button class="btn btn-sm" data-op="edit" data-id="${p.id}">编辑</button>
+        <button class="btn btn-sm btn-danger" data-op="del" data-id="${p.id}">删除</button>
+      </td>`;
+    tbody.appendChild(tr);
+  }
+  if (!projects.length) {
+    const tr = document.createElement('tr');
+    tr.className = 'empty-row';
+    tr.innerHTML = '<td colspan="7">暂无项目，点右上方「+ 新建项目」创建</td>';
+    tbody.appendChild(tr);
+  }
+}
+
+$('adminProjTbody').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-op]');
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  if (btn.dataset.op === 'edit') {
+    openProjectEditModal(id);
+    return;
+  }
+  const p = projects.find((x) => x.id === id);
+  if (!confirm(`确定删除项目「${p ? p.name : '#' + id}」吗？项目下仍有 Bug 或需求时无法删除。`)) return;
+  try {
+    await request(`${PROJECT_API}/${id}`, { method: 'DELETE' });
+    showToast('删除成功');
+    await refreshProjects();
+    renderAdminProjects();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+$('btnAdminNewProject').addEventListener('click', () => {
+  $('projModalTitle').textContent = '新建项目';
+  $('projForm').reset();
+  $('projId').value = '';
+  openModal($('projMask'));
+});
+
 init();
+
+
+
+
+

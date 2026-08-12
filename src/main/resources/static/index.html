@@ -1,49 +1,43 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BugClose - Bug 管理系统</title>
-  <link rel="stylesheet" href="css/style.css?v=20260805">
-</head>
+  <title>项目全周期管理</title>
+  <link rel="stylesheet" href="css/style.css?v=20260812-5">
+  <script>
+    if (!localStorage.getItem('bugclose_token') && !location.pathname.endsWith('/login.html')) {
+      const next = encodeURIComponent(location.pathname + location.search + location.hash);
+      location.replace(`/login.html?next=${next}`);
+    }
+  </script></head>
 <body>
-  <header class="topbar">
-    <h1>🐞 BugClose</h1>
+  <div class="app-layout">
+  <aside class="sidebar">
+    <h1>项目全周期管理</h1>
     <nav>
-      <button class="nav-btn" data-view="admin">系统管理</button>
-      <button class="nav-btn active" data-view="list">Bug 列表</button>
+      <div class="nav-group">
+        <button class="nav-btn active" data-view="admin">系统管理</button>
+        <div id="adminSub" class="nav-sub open">
+          <button class="nav-sub-btn active" data-tab="users">用户管理</button>
+          <button class="nav-sub-btn" data-tab="roles">角色管理</button>
+          <button class="nav-sub-btn" data-tab="projects">项目管理</button>
+        </div>
+      </div>
+      <button class="nav-btn" data-view="list">Bug 列表</button>
       <button class="nav-btn" data-view="docs">文档库</button>
       <button class="nav-btn" data-view="cases">测试用例</button>
       <button class="nav-btn" data-view="requirements">需求管理</button>
       <button class="nav-btn" data-view="dashboard">统计看板</button>
     </nav>
-    <div class="topbar-user">
+    <div class="sidebar-user">
       <span id="currentUser" class="current-user"></span>
       <button id="btnLogout" class="btn btn-sm">登出</button>
     </div>
-  </header>
-
-  <!-- 登录遮罩 -->
-  <div id="loginMask" class="modal-mask modal-visible login-mask">
-    <div class="modal modal-sm login-modal">
-      <h2>登录 BugClose</h2>
-      <form id="loginForm">
-        <label>用户名 <span class="required">*</span>
-          <input type="text" id="loginUsername" required maxlength="50" autocomplete="username" placeholder="账号">
-        </label>
-        <label>密码 <span class="required">*</span>
-          <input type="password" id="loginPassword" required maxlength="100" autocomplete="current-password" placeholder="密码">
-        </label>
-        <div class="modal-actions">
-          <button type="submit" class="btn btn-primary">登录</button>
-        </div>
-        <p class="login-hint">首次使用默认管理员：admin / admin123</p>
-      </form>
-    </div>
-  </div>
-
-  <!-- Bug 列表视图：左侧项目栏 + 右侧列表，下方项目汇总分析 -->
-  <main id="viewList" class="view view-wide">
+  </aside>
+  <div class="app-main">
+<!-- Bug 列表视图：左侧项目栏 + 右侧列表，下方项目汇总分析 -->
+  <main id="viewList" class="view view-wide hidden">
     <div class="view-with-sidebar">
     <aside class="proj-sidebar">
       <div class="proj-sidebar-head">
@@ -840,29 +834,81 @@
     <img id="imgPreviewLarge" class="img-preview-large" alt="图片预览">
   </div>
 
-  <!-- 系统管理视图 -->
-  <main id="viewAdmin" class="view hidden">
-    <section class="filter-bar">
-      <span class="admin-title">用户管理</span>
-      <span id="adminHint" class="admin-hint"></span>
-      <button id="btnNewUser" class="btn btn-primary">+ 新建用户</button>
+  <!-- 系统管理视图：二级模块由左侧边栏子菜单切换（用户管理 / 角色管理 / 项目管理），登录后默认展示 -->
+  <main id="viewAdmin" class="view">
+    <!-- 用户管理 -->
+    <section id="adminUsers" class="admin-panel">
+      <div class="filter-bar">
+        <span class="admin-title">用户管理</span>
+        <span id="adminHint" class="admin-hint"></span>
+        <button id="btnNewUser" class="btn btn-primary">+ 新建用户</button>
+      </div>
+      <table class="bug-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>用户名</th>
+            <th>显示名</th>
+            <th>角色</th>
+            <th>启用</th>
+            <th>绑定项目</th>
+            <th>创建时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="userTbody"></tbody>
+      </table>
     </section>
-    <table class="bug-table">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>用户名</th>
-          <th>显示名</th>
-          <th>角色</th>
-          <th>启用</th>
-          <th>绑定项目</th>
-          <th>创建时间</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody id="userTbody"></tbody>
-    </table>
+
+    <!-- 角色管理 -->
+    <section id="adminRoles" class="admin-panel hidden">
+      <div class="filter-bar">
+        <span class="admin-title">角色管理</span>
+        <span id="roleHint" class="admin-hint"></span>
+        <button id="btnNewRole" class="btn btn-primary">+ 新建角色</button>
+      </div>
+      <table class="bug-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>角色编码</th>
+            <th>角色名称</th>
+            <th>描述</th>
+            <th>类型</th>
+            <th>使用人数</th>
+            <th>创建时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="roleTbody"></tbody>
+      </table>
+    </section>
+
+    <!-- 项目管理 -->
+    <section id="adminProjects" class="admin-panel hidden">
+      <div class="filter-bar">
+        <span class="admin-title">项目管理</span>
+        <span id="adminProjHint" class="admin-hint"></span>
+        <button id="btnAdminNewProject" class="btn btn-primary">+ 新建项目</button>
+      </div>
+      <table class="bug-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>项目名称</th>
+            <th>编号</th>
+            <th>描述</th>
+            <th>Bug 数</th>
+            <th>创建时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="adminProjTbody"></tbody>
+      </table>
+    </section>
   </main>
+  </div>
+  </div>
 
   <!-- 新建/编辑用户弹窗 -->
   <div id="userMask" class="modal-mask">
@@ -883,10 +929,7 @@
             <input type="password" id="userPassword" maxlength="100" placeholder="至少 4 位；编辑时留空则不变">
           </label>
           <label>角色
-            <select id="userRole">
-              <option value="USER" selected>普通用户</option>
-              <option value="ADMIN">管理员</option>
-            </select>
+            <select id="userRole"></select>
           </label>
         </div>
         <label class="user-enabled-label">
@@ -904,6 +947,37 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=20260805"></script>
+  <!-- 新建/编辑角色弹窗 -->
+  <div id="roleMask" class="modal-mask">
+    <div class="modal">
+      <h2 id="roleModalTitle">新建角色</h2>
+      <form id="roleForm">
+        <input type="hidden" id="roleId">
+        <div class="form-row">
+          <label>角色编码 <span class="required">*</span>
+            <input type="text" id="roleCode" required maxlength="20" placeholder="大写字母/数字/下划线，如：TESTER">
+          </label>
+          <label>角色名称 <span class="required">*</span>
+            <input type="text" id="roleName" required maxlength="50" placeholder="如：测试人员">
+          </label>
+        </div>
+        <label>角色描述
+          <textarea id="roleDesc" rows="3" maxlength="200" placeholder="角色的职责说明（可选）"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="btnRoleCancel" class="btn">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/app.js?v=20260812-admin6"></script>
 </body>
 </html>
+
+
+
+
+
+
