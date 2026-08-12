@@ -79,11 +79,11 @@ public class UserController {
     }
 
     public record CreateUserRequest(String username, String password, String displayName,
-                                    User.Role role, Boolean enabled, Set<Long> projectIds) {
+                                    String role, Boolean enabled, Set<Long> projectIds) {
     }
 
     public record UpdateUserRequest(String username, String password, String displayName,
-                                   User.Role role, Boolean enabled, Set<Long> projectIds) {
+                                    String role, Boolean enabled, Set<Long> projectIds) {
     }
 
     @ExceptionHandler(UserService.UserNotFoundException.class)

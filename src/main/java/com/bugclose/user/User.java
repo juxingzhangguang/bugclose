@@ -3,8 +3,6 @@ package com.bugclose.user;
 import com.bugclose.project.Project;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -19,13 +17,16 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * 用户实体：管理员可配置用户并绑定项目，普通用户登录后只看到绑定项目的数据
+ * 用户实体：管理员可配置用户并绑定项目，普通用户登录后只看到绑定项目的数据。
+ * role 存储角色编码（如 ADMIN/USER，对应 roles 表），支持自定义角色。
  */
 @Entity
 @Table(name = "users")
 public class User {
 
-    public enum Role { ADMIN, USER }
+    /** 内置角色编码常量（与 roles 表种子数据一致） */
+    public static final String ROLE_ADMIN = "ADMIN";
+    public static final String ROLE_USER = "USER";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -43,9 +44,9 @@ public class User {
     @Column(length = 50)
     private String displayName;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
-    private Role role = Role.USER;
+    /** 角色编码（对应 roles.code，如 ADMIN/USER 或自定义角色） */
+    @Column(nullable = false, length = 20)
+    private String role = ROLE_USER;
 
     @Column(nullable = false)
     private boolean enabled = true;
@@ -71,8 +72,8 @@ public class User {
     public void setPassword(String password) { this.password = password; }
     public String getDisplayName() { return displayName; }
     public void setDisplayName(String displayName) { this.displayName = displayName; }
-    public Role getRole() { return role; }
-    public void setRole(Role role) { this.role = role; }
+    public String getRole() { return role; }
+    public void setRole(String role) { this.role = role; }
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public Set<Project> getProjects() { return projects; }

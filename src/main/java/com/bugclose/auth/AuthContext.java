@@ -13,9 +13,9 @@ public final class AuthContext {
 
     /** 当前用户快照：role=ADMIN 时 boundProjectIds 忽略（代表全部可见） */
     public record CurrentUser(Long id, String username, String displayName,
-                              User.Role role, Set<Long> boundProjectIds) {
+                              String role, Set<Long> boundProjectIds) {
         public boolean isAdmin() {
-            return role == User.Role.ADMIN;
+            return User.ROLE_ADMIN.equals(role);
         }
     }
 

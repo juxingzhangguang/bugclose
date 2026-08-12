@@ -21,11 +21,15 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("select p.id from User u join u.projects p where u.id = :userId")
     Set<Long> findBoundProjectIds(@Param("userId") Long userId);
 
-    long countByRoleAndEnabledTrue(User.Role role);
+    long countByRoleAndEnabledTrue(String role);
+
+    /** 引用指定角色编码的用户数（角色删除保护用） */
+    @Query("select count(u) from User u where u.role = :code")
+    long countByRoleCode(@Param("code") String code);
 
     /** 与给定项目集合有交集的非管理员用户（普通用户可见的协作成员） */
     @Query("select distinct u from User u join u.projects p "
             + "where u.role <> :adminRole and p.id in :projectIds")
-    List<User> findCollaborators(@Param("adminRole") User.Role adminRole,
+    List<User> findCollaborators(@Param("adminRole") String adminRole,
                                 @Param("projectIds") Collection<Long> projectIds);
 }

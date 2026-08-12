@@ -36,11 +36,11 @@ public class AuthService {
             throw new IllegalArgumentException("用户名或密码错误");
         }
         String token = tokenStore.issue(user.getId());
-        Set<Long> bound = user.getRole() == User.Role.ADMIN
+        Set<Long> bound = User.ROLE_ADMIN.equals(user.getRole())
                 ? Set.of() : userRepository.findBoundProjectIds(user.getId());
         return new LoginResult(token, user.getId(), user.getUsername(),
                 user.getDisplayName(), user.getRole(),
-                user.getRole() == User.Role.ADMIN, bound);
+                User.ROLE_ADMIN.equals(user.getRole()), bound);
     }
 
     public void logout(String token) {
@@ -64,15 +64,15 @@ public class AuthService {
         AuthContext.CurrentUser u = AuthContext.requireLoggedIn();
         User user = userRepository.findById(u.id())
                 .orElseThrow(() -> new AccessDeniedException("用户不存在"));
-        Set<Long> bound = user.getRole() == User.Role.ADMIN
+        Set<Long> bound = User.ROLE_ADMIN.equals(user.getRole())
                 ? Set.of() : userRepository.findBoundProjectIds(user.getId());
         return new LoginResult(null, user.getId(), user.getUsername(),
                 user.getDisplayName(), user.getRole(),
-                user.getRole() == User.Role.ADMIN, bound);
+                User.ROLE_ADMIN.equals(user.getRole()), bound);
     }
 
     /** 登录/当前用户返回体 */
     public record LoginResult(String token, Long id, String username, String displayName,
-                              User.Role role, boolean allProjects, Set<Long> allowedProjectIds) {
+                              String role, boolean allProjects, Set<Long> allowedProjectIds) {
     }
 }

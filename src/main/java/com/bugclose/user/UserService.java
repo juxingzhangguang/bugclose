@@ -41,7 +41,7 @@ public class UserService {
 
     /** 用户视图：含绑定的项目列表，不含密码 */
     public record UserView(Long id, String username, String displayName,
-                           User.Role role, boolean enabled,
+                           String role, boolean enabled,
                            LocalDateTime createdAt, List<ProjectRef> projects) {
     }
 
@@ -58,7 +58,7 @@ public class UserService {
             Set<Long> visible = accessScope.visibleProjectIds();
             users = visible == null || visible.isEmpty()
                     ? List.of()
-                    : userRepository.findCollaborators(User.Role.ADMIN, visible);
+                    : userRepository.findCollaborators(User.ROLE_ADMIN, visible);
         }
         return users.stream()
                 .sorted((a, b) -> a.getId().compareTo(b.getId()))
@@ -72,7 +72,7 @@ public class UserService {
         User user = findById(id);
         // 普通用户只能查看协作成员（非管理员）的详情；管理员不限
         if (!current.isAdmin()) {
-            if (user.getRole() == User.Role.ADMIN) {
+            if (User.ROLE_ADMIN.equals(user.getRole())) {
                 throw new UserNotFoundException(id);
             }
             Set<Long> mine = accessScope.visibleProjectIds();
@@ -100,7 +100,7 @@ public class UserService {
         user.setUsername(username);
         user.setPassword(passwordEncoder.encode(rawPassword));
         if (user.getRole() == null) {
-            user.setRole(User.Role.USER);
+            user.setRole(User.ROLE_USER);
         }
         if (user.getDisplayName() == null || user.getDisplayName().isBlank()) {
             user.setDisplayName(username);
@@ -129,7 +129,7 @@ public class UserService {
         } else {
             user.setDisplayName(changes.getDisplayName().trim());
         }
-        User.Role newRole = changes.getRole() != null ? changes.getRole() : user.getRole();
+        String newRole = changes.getRole() != null ? changes.getRole() : user.getRole();
         boolean newEnabled = changes.isEnabled();
         guardLastAdmin(user, newRole, newEnabled);
         user.setRole(newRole);
@@ -154,8 +154,8 @@ public class UserService {
             throw new IllegalArgumentException("不能删除当前登录用户");
         }
         User user = findById(id);
-        if (user.getRole() == User.Role.ADMIN && user.isEnabled()
-                && userRepository.countByRoleAndEnabledTrue(User.Role.ADMIN) <= 1) {
+        if (User.ROLE_ADMIN.equals(user.getRole()) && user.isEnabled()
+                && userRepository.countByRoleAndEnabledTrue(User.ROLE_ADMIN) <= 1) {
             throw new IllegalArgumentException("不能删除最后一个启用的管理员");
         }
         userRepository.delete(user);
@@ -175,10 +175,10 @@ public class UserService {
     }
 
     /** 保护最后一个启用的管理员不被降级或禁用，避免无人可管 */
-    private void guardLastAdmin(User user, User.Role newRole, boolean newEnabled) {
-        if (user.getRole() == User.Role.ADMIN && user.isEnabled()
-                && (newRole != User.Role.ADMIN || !newEnabled)
-                && userRepository.countByRoleAndEnabledTrue(User.Role.ADMIN) <= 1) {
+    private void guardLastAdmin(User user, String newRole, boolean newEnabled) {
+        if (User.ROLE_ADMIN.equals(user.getRole()) && user.isEnabled()
+                && (!User.ROLE_ADMIN.equals(newRole) || !newEnabled)
+                && userRepository.countByRoleAndEnabledTrue(User.ROLE_ADMIN) <= 1) {
             throw new IllegalArgumentException("不能禁用或降级最后一个启用的管理员");
         }
     }
