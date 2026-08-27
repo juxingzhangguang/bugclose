@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>&#39033;&#30446;&#20840;&#21608;&#26399;&#31649;&#29702; - &#30331;&#24405;</title>
-  <link rel="stylesheet" href="css/style.css?v=20260812-3">
+  <link rel="stylesheet" href="css/style.css?v=20260827-1">
   <style>
     :root {
       --ink: #102a43;
@@ -19,14 +19,14 @@
       display: grid;
       place-items: center;
       padding: 28px;
-      background: #0c4652 url('images/login-mountain.jpg') center / cover no-repeat fixed;
+      background: #16324f url('images/login-bg.png') center / cover no-repeat fixed;
       color: var(--ink);
     }
     body.auth-page::before {
       content: '';
       position: fixed;
       inset: 0;
-      background: rgba(5, 31, 38, 0.36);
+      background: rgba(15, 35, 60, 0.18);
       pointer-events: none;
     }
     .auth-shell {
@@ -117,14 +117,16 @@
     .auth-actions .btn {
       width: 100%;
       min-height: 42px;
-      border-radius: 6px;
-      background: var(--teal);
-      border-color: var(--teal);
+      border-radius: 8px;
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      border-color: transparent;
       font-weight: 600;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
     }
     .auth-actions .btn:hover {
-      background: var(--teal-dark);
-      border-color: var(--teal-dark);
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      border-color: transparent;
+      box-shadow: 0 6px 18px rgba(37, 99, 235, 0.45);
     }
     .auth-message {
       min-height: 20px;

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>项目全周期管理</title>
-  <link rel="stylesheet" href="css/style.css?v=20260812-5">
+  <link rel="stylesheet" href="css/style.css?v=20260827-4">
   <script>
     if (!localStorage.getItem('bugclose_token') && !location.pathname.endsWith('/login.html')) {
       const next = encodeURIComponent(location.pathname + location.search + location.hash);
@@ -107,42 +107,36 @@
     <div id="bugPager" class="pager"></div>
     </div>
     </div>
-
-    <!-- 项目 Bug 汇总分析（默认折叠，避免撑高页面） -->
-    <details class="proj-summary">
-      <summary>📊 项目 Bug 汇总分析<span class="summary-hint">点击展开 / 收起</span></summary>
-      <div class="chart-grid">
-        <section class="chart-box">
-          <h3>各项目 Bug 数量</h3>
-          <div id="chartProjCount" class="bar-chart"></div>
-        </section>
-        <section class="chart-box">
-          <h3>各项目状态构成</h3>
-          <div id="chartProjStatus" class="bar-chart"></div>
-        </section>
-        <section class="chart-box">
-          <h3>各项目严重程度构成</h3>
-          <div id="chartProjSeverity" class="bar-chart"></div>
-        </section>
-      </div>
-    </details>
   </main>
 
   <!-- 统计看板视图 -->
   <main id="viewDashboard" class="view hidden">
     <section class="stat-cards" id="statCards"></section>
+    <section class="stat-cards" id="statCardsOverview"></section>
     <div class="chart-grid">
       <section class="chart-box">
-        <h3>按状态分布</h3>
+        <h3>Bug 按状态分布</h3>
         <div id="chartStatus" class="bar-chart"></div>
       </section>
       <section class="chart-box">
-        <h3>按严重程度分布</h3>
+        <h3>Bug 按严重程度分布</h3>
         <div id="chartSeverity" class="bar-chart"></div>
       </section>
       <section class="chart-box">
-        <h3>按处理人分布</h3>
+        <h3>Bug 按处理人分布</h3>
         <div id="chartAssignee" class="bar-chart"></div>
+      </section>
+      <section class="chart-box">
+        <h3>测试用例执行状态</h3>
+        <div id="chartCaseStatus" class="bar-chart"></div>
+      </section>
+      <section class="chart-box">
+        <h3>需求状态分布</h3>
+        <div id="chartReqStatus" class="bar-chart"></div>
+      </section>
+      <section class="chart-box">
+        <h3>文档分类分布</h3>
+        <div id="chartDocCategory" class="bar-chart"></div>
       </section>
     </div>
   </main>
@@ -207,25 +201,6 @@
     <div id="docPager" class="pager"></div>
     </div>
     </div>
-
-    <!-- 文档汇总分析（默认折叠，避免撑高页面） -->
-    <details class="proj-summary">
-      <summary>📊 文档汇总分析<span class="summary-hint">点击展开 / 收起</span></summary>
-      <div class="chart-grid">
-        <section class="chart-box">
-          <h3>按分类分布</h3>
-          <div id="chartDocCategory" class="bar-chart"></div>
-        </section>
-        <section class="chart-box">
-          <h3>各项目文档数量</h3>
-          <div id="chartDocProjCount" class="bar-chart"></div>
-        </section>
-        <section class="chart-box">
-          <h3>各项目分类构成</h3>
-          <div id="chartDocProjCategory" class="bar-chart"></div>
-        </section>
-      </div>
-    </details>
   </main>
 
   <!-- 测试用例视图 -->
@@ -294,25 +269,6 @@
     <div id="casePager" class="pager"></div>
     </div>
     </div>
-
-    <!-- 用例汇总分析（默认折叠，避免撑高页面） -->
-    <details class="proj-summary">
-      <summary>📊 用例执行汇总分析<span class="summary-hint">点击展开 / 收起</span></summary>
-      <div class="chart-grid">
-        <section class="chart-box">
-          <h3>按执行状态分布</h3>
-          <div id="chartCaseStatus" class="bar-chart"></div>
-        </section>
-        <section class="chart-box">
-          <h3>各项目用例数量</h3>
-          <div id="chartCaseProjCount" class="bar-chart"></div>
-        </section>
-        <section class="chart-box">
-          <h3>各项目执行状态构成</h3>
-          <div id="chartCaseProjStatus" class="bar-chart"></div>
-        </section>
-      </div>
-    </details>
   </main>
 
   <!-- 需求管理视图 -->
@@ -384,26 +340,10 @@
     <div id="reqPager" class="pager"></div>
     </div>
     </div>
-
-    <!-- 需求汇总分析（默认折叠，避免撑高页面） -->
-    <details class="proj-summary">
-      <summary>📊 需求汇总分析<span class="summary-hint">点击展开 / 收起</span></summary>
-      <div class="chart-grid">
-        <section class="chart-box">
-          <h3>按状态分布</h3>
-          <div id="chartReqStatus" class="bar-chart"></div>
-        </section>
-        <section class="chart-box">
-          <h3>各项目需求数量</h3>
-          <div id="chartReqProjCount" class="bar-chart"></div>
-        </section>
-        <section class="chart-box">
-          <h3>各项目状态构成</h3>
-          <div id="chartReqProjStatus" class="bar-chart"></div>
-        </section>
-      </div>
-    </details>
   </main>
+
+  <!-- 汇总分析悬浮按钮：随当前视图切换文案与对应弹窗 -->
+  <button id="summaryFab" class="summary-fab hidden" type="button">📊 汇总分析</button>
 
   <!-- 新建/编辑弹窗 -->
   <div id="modalMask" class="modal-mask">
@@ -496,7 +436,7 @@
 
   <!-- 新建/编辑项目弹窗 -->
   <div id="projMask" class="modal-mask">
-    <div class="modal">
+    <div class="modal modal-lg">
       <h2 id="projModalTitle">新建项目</h2>
       <form id="projForm">
         <input type="hidden" id="projId">
@@ -949,7 +889,7 @@
 
   <!-- 新建/编辑角色弹窗 -->
   <div id="roleMask" class="modal-mask">
-    <div class="modal">
+    <div class="modal modal-lg">
       <h2 id="roleModalTitle">新建角色</h2>
       <form id="roleForm">
         <input type="hidden" id="roleId">
@@ -972,7 +912,100 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=20260812-admin6"></script>
+  <!-- ===== 各模块汇总分析悬浮弹窗 ===== -->
+  <div id="bugSummaryMask" class="modal-mask">
+    <div class="modal modal-lg">
+      <h2>📊 项目 Bug 汇总分析</h2>
+      <div class="summary-charts">
+        <section class="chart-box">
+          <h3>各项目 Bug 数量</h3>
+          <div id="chartProjCount" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目状态构成</h3>
+          <div id="chartProjStatus" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目严重程度构成</h3>
+          <div id="chartProjSeverity" class="bar-chart"></div>
+        </section>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-close-summary>关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="docSummaryMask" class="modal-mask">
+    <div class="modal modal-lg">
+      <h2>📊 文档汇总分析</h2>
+      <div class="summary-charts">
+        <section class="chart-box">
+          <h3>按分类分布</h3>
+          <div id="docChartCategory" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目文档数量</h3>
+          <div id="docChartProjCount" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目分类构成</h3>
+          <div id="docChartProjCategory" class="bar-chart"></div>
+        </section>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-close-summary>关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="caseSummaryMask" class="modal-mask">
+    <div class="modal modal-lg">
+      <h2>📊 用例执行汇总分析</h2>
+      <div class="summary-charts">
+        <section class="chart-box">
+          <h3>按执行状态分布</h3>
+          <div id="caseChartStatus" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目用例数量</h3>
+          <div id="caseChartProjCount" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目执行状态构成</h3>
+          <div id="caseChartProjStatus" class="bar-chart"></div>
+        </section>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-close-summary>关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="reqSummaryMask" class="modal-mask">
+    <div class="modal modal-lg">
+      <h2>📊 需求汇总分析</h2>
+      <div class="summary-charts">
+        <section class="chart-box">
+          <h3>按状态分布</h3>
+          <div id="reqChartStatus" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目需求数量</h3>
+          <div id="reqChartProjCount" class="bar-chart"></div>
+        </section>
+        <section class="chart-box">
+          <h3>各项目状态构成</h3>
+          <div id="reqChartProjStatus" class="bar-chart"></div>
+        </section>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-close-summary>关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js?v=20260827-summary3"></script>
 </body>
 </html>
 

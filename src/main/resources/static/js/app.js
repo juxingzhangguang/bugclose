@@ -139,6 +139,7 @@ function switchView(view) {
   oldView.classList.add('hidden');
   newView.classList.remove('hidden');
   newView.classList.add('view-animate-in');
+  window.scrollTo(0, 0); // 切换视图回到顶部，避免沿用旧滚动位置产生跳动
 
   setTimeout(() => {
     newView.classList.remove('view-animate-in');
@@ -152,7 +153,39 @@ function switchView(view) {
   else if (view === 'requirements') loadRequirements();
   else if (view === 'admin') loadAdminTab(currentTab);
   else loadBugs();
+  updateSummaryFab(view);
 }
+
+/* ===== 汇总分析悬浮按钮（右下角，按当前模块打开对应汇总弹窗） ===== */
+const SUMMARY_FAB = {
+  list: { label: '📊 Bug 汇总分析', mask: 'bugSummaryMask' },
+  docs: { label: '📊 文档汇总分析', mask: 'docSummaryMask' },
+  cases: { label: '📊 用例汇总分析', mask: 'caseSummaryMask' },
+  requirements: { label: '📊 需求汇总分析', mask: 'reqSummaryMask' },
+};
+
+function updateSummaryFab(view) {
+  const cfg = SUMMARY_FAB[view];
+  const fab = $('summaryFab');
+  fab.classList.toggle('hidden', !cfg);
+  if (cfg) {
+    fab.textContent = cfg.label;
+    fab.dataset.mask = cfg.mask;
+  }
+}
+
+$('summaryFab').addEventListener('click', () => {
+  const mask = $('summaryFab').dataset.mask;
+  if (mask) openModal($(mask));
+});
+
+/* 点遮罩空白处或「关闭」按钮收起汇总弹窗（ESC 由全局快捷键处理） */
+['bugSummaryMask', 'docSummaryMask', 'caseSummaryMask', 'reqSummaryMask'].forEach((maskId) => {
+  const mask = $(maskId);
+  mask.addEventListener('click', (e) => {
+    if (e.target === mask || e.target.closest('[data-close-summary]')) closeModal(mask);
+  });
+});
 
 /* ===== 系统管理二级菜单（侧栏） ===== */
 let currentTab = 'users'; // users / roles / projects
@@ -469,7 +502,7 @@ function renderBugPager(totalPages) {
   $('bugPager').innerHTML = `
     <span class="pager-total">共 ${allBugs.length} 条</span>
     <select id="bugPageSize" class="pager-size">
-      ${[10, 20, 50].map((s) => `<option value="${s}" ${s === bugPageSize ? 'selected' : ''}>${s} 条/页</option>`).join('')}
+      ${[10, 15, 20, 50].map((s) => `<option value="${s}" ${s === bugPageSize ? 'selected' : ''}>${s} 条/页</option>`).join('')}
     </select>
     <button class="pager-btn" data-page="${bugPage - 1}" ${bugPage <= 1 ? 'disabled' : ''}>上一页</button>
     ${nums}
@@ -885,11 +918,15 @@ $('projForm').addEventListener('submit', async (e) => {
 /* ===== 统计看板 ===== */
 async function loadStatistics() {
   try {
-    const stat = await request(`${API}/statistics`);
-    renderStatCards(stat);
-    renderBarChart('chartStatus', stat.byStatus, STATUS_TEXT);
-    renderBarChart('chartSeverity', stat.bySeverity, SEVERITY_TEXT);
-    renderBarChart('chartAssignee', stat.byAssignee, null);
+    const stat = await request('/api/dashboard/statistics');
+    renderStatCards(stat.bug);
+    renderOverviewCards(stat);
+    renderBarChart('chartStatus', stat.bug.byStatus, STATUS_TEXT);
+    renderBarChart('chartSeverity', stat.bug.bySeverity, SEVERITY_TEXT);
+    renderBarChart('chartAssignee', stat.bug.byAssignee, null);
+    renderBarChart('chartCaseStatus', stat.testCase.byStatus, CASE_STATUS_TEXT);
+    renderBarChart('chartReqStatus', stat.requirement.byStatus, REQ_STATUS_TEXT);
+    renderBarChart('chartDocCategory', stat.doc.byCategory, DOC_CATEGORY_TEXT);
   } catch (e) {
     showToast(e.message, true);
   }
@@ -904,6 +941,24 @@ function renderStatCards(stat) {
     { label: '已关闭', num: stat.byStatus.CLOSED, color: '#64748b' },
   ];
   $('statCards').innerHTML = cards
+    .map(
+      (c) => `<div class="stat-card">
+        <div class="num" style="color:${c.color}">${c.num}</div>
+        <div class="label">${c.label}</div>
+      </div>`
+    )
+    .join('');
+}
+
+function renderOverviewCards(stat) {
+  const cards = [
+    { label: '测试用例', num: stat.testCase.total, color: '#333' },
+    { label: '已执行用例', num: stat.testCase.executed, color: '#1a56db' },
+    { label: '用例通过率', num: stat.testCase.passRate + '%', color: '#05803c' },
+    { label: '需求总数', num: stat.requirement.total, color: '#7e22ce' },
+    { label: '文档总数', num: stat.doc.total, color: '#c2710c' },
+  ];
+  $('statCardsOverview').innerHTML = cards
     .map(
       (c) => `<div class="stat-card">
         <div class="num" style="color:${c.color}">${c.num}</div>
@@ -964,7 +1019,7 @@ function renderDocSummary(docs) {
   const catMap = {};
   for (const k of Object.keys(DOC_CATEGORY_TEXT)) catMap[k] = 0;
   for (const d of docs) catMap[d.category] = (catMap[d.category] || 0) + 1;
-  renderBarChart('chartDocCategory', catMap, DOC_CATEGORY_TEXT);
+  renderBarChart('docChartCategory', catMap, DOC_CATEGORY_TEXT);
 
   // 同步左侧项目栏的文档计数
   docCountByProject = new Map();
@@ -976,15 +1031,15 @@ function renderDocSummary(docs) {
   // 按项目汇总
   const rows = bucketByProject(docs, '未关联');
   if (!rows.length) {
-    ['chartDocProjCount', 'chartDocProjCategory'].forEach((id) => {
+    ['docChartProjCount', 'docChartProjCategory'].forEach((id) => {
       $(id).innerHTML = '<p class="chart-empty">暂无数据</p>';
     });
     return;
   }
   const countMap = {};
   for (const r of rows) countMap[r.name] = r.items.length;
-  renderBarChart('chartDocProjCount', countMap, null);
-  renderStackChart('chartDocProjCategory', rows, 'category', DOC_CATEGORY_TEXT, DOC_CATEGORY_COLOR);
+  renderBarChart('docChartProjCount', countMap, null);
+  renderStackChart('docChartProjCategory', rows, 'category', DOC_CATEGORY_TEXT, DOC_CATEGORY_COLOR);
 }
 
 /* ===== 文档库左侧项目栏（与 Bug 列表同款布局，计数为文档数） ===== */
@@ -1133,7 +1188,7 @@ function renderDocPager(totalPages) {
   $('docPager').innerHTML = `
     <span class="pager-total">共 ${allDocs.length} 条</span>
     <select id="docPageSize" class="pager-size">
-      ${[10, 20, 50].map((s) => `<option value="${s}" ${s === docPageSize ? 'selected' : ''}>${s} 条/页</option>`).join('')}
+      ${[10, 15, 20, 50].map((s) => `<option value="${s}" ${s === docPageSize ? 'selected' : ''}>${s} 条/页</option>`).join('')}
     </select>
     <button class="pager-btn" data-page="${docPage - 1}" ${docPage <= 1 ? 'disabled' : ''}>上一页</button>
     ${nums}
@@ -1375,7 +1430,7 @@ function renderCaseSummary(cases) {
   const statusMap = {};
   for (const k of Object.keys(CASE_STATUS_TEXT)) statusMap[k] = 0;
   for (const c of cases) statusMap[c.status] = (statusMap[c.status] || 0) + 1;
-  renderBarChart('chartCaseStatus', statusMap, CASE_STATUS_TEXT);
+  renderBarChart('caseChartStatus', statusMap, CASE_STATUS_TEXT);
 
   // 同步左侧项目栏的用例计数
   caseCountByProject = new Map();
@@ -1387,15 +1442,15 @@ function renderCaseSummary(cases) {
   // 按项目汇总
   const rows = bucketByProject(cases, '未关联');
   if (!rows.length) {
-    ['chartCaseProjCount', 'chartCaseProjStatus'].forEach((id) => {
+    ['caseChartProjCount', 'caseChartProjStatus'].forEach((id) => {
       $(id).innerHTML = '<p class="chart-empty">暂无数据</p>';
     });
     return;
   }
   const countMap = {};
   for (const r of rows) countMap[r.name] = r.items.length;
-  renderBarChart('chartCaseProjCount', countMap, null);
-  renderStackChart('chartCaseProjStatus', rows, 'status', CASE_STATUS_TEXT, CASE_STATUS_COLOR);
+  renderBarChart('caseChartProjCount', countMap, null);
+  renderStackChart('caseChartProjStatus', rows, 'status', CASE_STATUS_TEXT, CASE_STATUS_COLOR);
 }
 
 /* ===== 测试用例左侧项目栏（与文档库同款布局，计数为用例数） ===== */
@@ -1543,7 +1598,7 @@ function renderCasePager(totalPages) {
   $('casePager').innerHTML = `
     <span class="pager-total">共 ${allCases.length} 条</span>
     <select id="casePageSize" class="pager-size">
-      ${[10, 20, 50].map((s) => `<option value="${s}" ${s === casePageSize ? 'selected' : ''}>${s} 条/页</option>`).join('')}
+      ${[10, 15, 20, 50].map((s) => `<option value="${s}" ${s === casePageSize ? 'selected' : ''}>${s} 条/页</option>`).join('')}
     </select>
     <button class="pager-btn" data-page="${casePage - 1}" ${casePage <= 1 ? 'disabled' : ''}>上一页</button>
     ${nums}
@@ -1948,7 +2003,7 @@ function renderReqSummary(reqs) {
   const statusMap = {};
   for (const k of Object.keys(REQ_STATUS_TEXT)) statusMap[k] = 0;
   for (const r of reqs) statusMap[r.status] = (statusMap[r.status] || 0) + 1;
-  renderBarChart('chartReqStatus', statusMap, REQ_STATUS_TEXT);
+  renderBarChart('reqChartStatus', statusMap, REQ_STATUS_TEXT);
 
   // 同步左侧项目栏的需求计数
   reqCountByProject = new Map();
@@ -1960,15 +2015,15 @@ function renderReqSummary(reqs) {
   // 按项目汇总
   const rows = bucketByProject(reqs, '未关联');
   if (!rows.length) {
-    ['chartReqProjCount', 'chartReqProjStatus'].forEach((id) => {
+    ['reqChartProjCount', 'reqChartProjStatus'].forEach((id) => {
       $(id).innerHTML = '<p class="chart-empty">暂无数据</p>';
     });
     return;
   }
   const countMap = {};
   for (const r of rows) countMap[r.name] = r.items.length;
-  renderBarChart('chartReqProjCount', countMap, null);
-  renderStackChart('chartReqProjStatus', rows, 'status', REQ_STATUS_TEXT, REQ_STATUS_COLOR);
+  renderBarChart('reqChartProjCount', countMap, null);
+  renderStackChart('reqChartProjStatus', rows, 'status', REQ_STATUS_TEXT, REQ_STATUS_COLOR);
 }
 
 /* ===== 需求管理左侧项目栏（与测试用例同款布局，计数为需求数） ===== */
@@ -2114,7 +2169,7 @@ function renderReqPager(totalPages) {
   $('reqPager').innerHTML = `
     <span class="pager-total">共 ${allRequirements.length} 条</span>
     <select id="reqPageSize" class="pager-size">
-      ${[10, 20, 50].map((s) => `<option value="${s}" ${s === reqPageSize ? 'selected' : ''}>${s} 条/页</option>`).join('')}
+      ${[10, 15, 20, 50].map((s) => `<option value="${s}" ${s === reqPageSize ? 'selected' : ''}>${s} 条/页</option>`).join('')}
     </select>
     <button class="pager-btn" data-page="${reqPage - 1}" ${reqPage <= 1 ? 'disabled' : ''}>上一页</button>
     ${nums}

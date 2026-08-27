@@ -15,6 +15,18 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 BASE = "http://localhost:8080"
+TOKEN = None
+
+
+def login(username="admin", password="admin123"):
+    """登录获取 Bearer token（应用对 /api/** 强制鉴权）。"""
+    global TOKEN
+    url = BASE + "/api/auth/login"
+    data = json.dumps({"username": username, "password": password}).encode("utf-8")
+    r = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(r, timeout=30) as resp:
+        TOKEN = json.loads(resp.read().decode("utf-8"))["token"]
+    print(f"  已登录：{username}")
 
 
 def req(method, path, body=None, form=None):
@@ -42,14 +54,15 @@ def req(method, path, body=None, form=None):
                     f"{v}\r\n".encode("utf-8")
                 )
         data = b"".join(parts) + f"--{boundary}--\r\n".encode("utf-8")
-        headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+        headers = {"Content-Type": f"multipart/form-data; boundary={boundary}",
+                   "Authorization": f"Bearer {TOKEN}"}
         r = urllib.request.Request(url, data=data, headers=headers, method=method)
     elif body is not None:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {TOKEN}"}
         r = urllib.request.Request(url, data=data, headers=headers, method=method)
     else:
-        r = urllib.request.Request(url, method=method)
+        r = urllib.request.Request(url, method=method, headers={"Authorization": f"Bearer {TOKEN}"})
     try:
         with urllib.request.urlopen(r, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
@@ -65,8 +78,9 @@ def req(method, path, body=None, form=None):
 
 def get(path):
     try:
-        with urllib.request.urlopen(BASE + path, timeout=30) as r:
-            return json.loads(r.read().decode("utf-8"))
+        r = urllib.request.Request(BASE + path, headers={"Authorization": f"Bearer {TOKEN}"})
+        with urllib.request.urlopen(r, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         print(f"  [NET] GET {path} -> {e}")
         return []
@@ -76,6 +90,12 @@ def main():
     print("==========================================")
     print("  BugClose 测试数据创建脚本 (Python)")
     print("==========================================")
+
+    # 前置：登录获取 token
+    print("\n[登录] ...")
+    import os
+    login(os.environ.get("BUGCLOSE_ADMIN_USER", "admin"),
+          os.environ.get("BUGCLOSE_ADMIN_PASS", "admin123"))
 
     # 0. 清理遗留 projectId 为 null 的文档
     print("\n[0/7] 清理遗留数据...")
