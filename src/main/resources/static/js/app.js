@@ -79,6 +79,7 @@ function closeModal(maskEl) {
 
 /* ===== 视图切换 ===== */
 const viewMap = {
+  home: 'viewHome',
   list: 'viewList',
   dashboard: 'viewDashboard',
   docs: 'viewDocs',
@@ -86,7 +87,7 @@ const viewMap = {
   requirements: 'viewRequirements',
   admin: 'viewAdmin',
 };
-let currentViewId = 'viewAdmin';
+let currentViewId = 'viewHome';
 let viewSwitching = false;
 
 /* 点击水波纹动画（导航按钮 / 二级菜单共用） */
@@ -152,7 +153,7 @@ function switchView(view) {
   else if (view === 'cases') loadCases();
   else if (view === 'requirements') loadRequirements();
   else if (view === 'admin') loadAdminTab(currentTab);
-  else loadBugs();
+  else if (view === 'list') loadBugs();
   updateSummaryFab(view);
 }
 
@@ -906,10 +907,10 @@ $('projForm').addEventListener('submit', async (e) => {
     closeModal($('projMask'));
     await refreshProjects();
     loadBugs();
-    // 文档库视图打开时同步刷新文档列表（项目名、侧栏计数）
     if (!$('viewDocs').classList.contains('hidden')) loadDocs();
-    // 系统管理「项目管理」tab 打开时同步刷新表格
-    if (!$('adminProjects').classList.contains('hidden')) renderAdminProjects();
+    if (!$('viewCases').classList.contains('hidden')) loadCases();
+    if (!$('viewRequirements').classList.contains('hidden')) loadRequirements();
+    if (!$('viewAdmin').classList.contains('hidden')) renderAdminProjects();
   } catch (err) {
     showToast(err.message, true);
   }

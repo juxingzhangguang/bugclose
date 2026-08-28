@@ -53,11 +53,11 @@ body {
 .nav-btn:hover { background: #eaf1fc; border-color: #cfdffb; color: #1e40af; }
 .nav-btn:active { transform: scale(0.97); }
 .nav-btn.active {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  background: #334155;
   color: #fff; border-color: transparent; font-weight: 600;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.32);
+  box-shadow: 0 2px 8px rgba(51, 65, 85, 0.25);
 }
-.nav-btn.active:hover { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; }
+.nav-btn.active:hover { background: #1e293b; color: #fff; }
 
 /* 导航/二级 tab 点击水波纹 */
 .tab-ripple {
@@ -801,8 +801,8 @@ body {
 }
 .nav-sub-btn:hover { background: #dbeafe; color: #1e3a8a; }
 .nav-sub-btn:active { transform: scale(0.96); }
-.nav-sub-btn.active { background: #2563eb; color: #fff; font-weight: 600; }
-.nav-sub-btn.active:hover { background: #1d4ed8; color: #fff; }
+.nav-sub-btn.active { background: #e2e8f0; color: #1e293b; font-weight: 600; }
+.nav-sub-btn.active:hover { background: #cbd5e1; color: #1e293b; }
 
 .admin-panel .filter-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 
@@ -842,3 +842,47 @@ body {
 
 /* 系统管理只读提示 */
 .admin-hint { flex: 1; font-size: 12px; color: #94a3b8; }
+
+/* ===== 首页 ===== */
+.home-container {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100%; min-height: 70vh; text-align: center; gap: 24px; padding: 40px 20px;
+}
+.home-logo svg { filter: drop-shadow(0 4px 12px rgba(51,65,85,.18)); }
+.home-title { font-size: 32px; font-weight: 700; color: #1e293b; letter-spacing: 2px; }
+.home-subtitle { font-size: 15px; color: #64748b; letter-spacing: 1px; margin-top: -8px; }
+
+/* 流程卡片 */
+.home-flow {
+  display: flex; align-items: center; gap: 0; margin-top: 12px;
+  flex-wrap: wrap; justify-content: center;
+}
+.home-flow-step {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+  padding: 20px 24px; min-width: 140px;
+  transition: transform .2s, box-shadow .2s;
+}
+.home-flow-step:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+.flow-icon {
+  width: 48px; height: 48px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+}
+.flow-req { background: #ede9fe; color: #7c3aed; }
+.flow-doc { background: #e0f2fe; color: #0284c7; }
+.flow-case { background: #dcfce7; color: #16a34a; }
+.flow-bug { background: #fee2e2; color: #dc2626; }
+.flow-label { font-size: 15px; font-weight: 600; color: #1e293b; }
+.flow-desc { font-size: 12px; color: #94a3b8; }
+.flow-arrow { font-size: 22px; color: #cbd5e1; margin: 0 6px; font-weight: 300; }
+
+/* 特性亮点 */
+.home-features {
+  display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-top: 8px;
+}
+.home-feature {
+  display: flex; align-items: center; gap: 8px;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px;
+  padding: 8px 18px; font-size: 13px; color: #475569; font-weight: 500;
+}
+.feature-icon { font-size: 16px; }
