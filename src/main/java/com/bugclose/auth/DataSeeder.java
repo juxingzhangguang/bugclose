@@ -56,6 +56,16 @@ public class DataSeeder {
                                        BCryptPasswordEncoder encoder) {
         return args -> {
             if (userRepository.count() > 0) {
+                // 兼容旧库：admin 仍在用默认口令时，补上强制改密标记
+                userRepository.findByUsername("admin").ifPresent(admin -> {
+                    if (!admin.isMustChangePassword()
+                            && encoder.matches("admin123", admin.getPassword())) {
+                        admin.setMustChangePassword(true);
+                        admin.setUpdatedAt(LocalDateTime.now());
+                        userRepository.save(admin);
+                        log.warn("检测到 admin 仍使用默认口令，已标记为首次登录强制改密");
+                    }
+                });
                 return;
             }
             User admin = new User();
@@ -64,10 +74,11 @@ public class DataSeeder {
             admin.setDisplayName("管理员");
             admin.setRole(User.ROLE_ADMIN);
             admin.setEnabled(true);
+            admin.setMustChangePassword(true); // 默认口令，首次登录强制改密
             admin.setCreatedAt(LocalDateTime.now());
             admin.setUpdatedAt(LocalDateTime.now());
             userRepository.save(admin);
-            log.warn("已种入默认管理员：账号 admin / 密码 admin123，请尽快修改密码");
+            log.warn("已种入默认管理员：账号 admin / 密码 admin123，首次登录将强制修改密码");
         };
     }
 }

@@ -2,6 +2,7 @@ package com.bugclose.user;
 
 import com.bugclose.auth.AccessScope;
 import com.bugclose.auth.AuthContext;
+import com.bugclose.auth.TokenStore;
 import com.bugclose.project.Project;
 import com.bugclose.project.ProjectRepository;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -26,13 +27,16 @@ public class UserService {
     private final ProjectRepository projectRepository;
     private final AccessScope accessScope;
     private final BCryptPasswordEncoder passwordEncoder;
+    private final TokenStore tokenStore;
 
     public UserService(UserRepository userRepository, ProjectRepository projectRepository,
-                       AccessScope accessScope, BCryptPasswordEncoder passwordEncoder) {
+                       AccessScope accessScope, BCryptPasswordEncoder passwordEncoder,
+                       TokenStore tokenStore) {
         this.userRepository = userRepository;
         this.projectRepository = projectRepository;
         this.accessScope = accessScope;
         this.passwordEncoder = passwordEncoder;
+        this.tokenStore = tokenStore;
     }
 
     /** 项目引用（绑定列表用） */
@@ -134,15 +138,23 @@ public class UserService {
         guardLastAdmin(user, newRole, newEnabled);
         user.setRole(newRole);
         user.setEnabled(newEnabled);
+        boolean credentialsChanged = false;
         if (rawPassword != null && !rawPassword.isBlank()) {
             if (rawPassword.length() < 4) {
                 throw new IllegalArgumentException("密码至少 4 位");
             }
             user.setPassword(passwordEncoder.encode(rawPassword));
+            user.setMustChangePassword(false); // 管理员重置密码后不再要求首登改密
+            credentialsChanged = true;
         }
         user.setProjects(resolveProjects(projectIds));
         user.setUpdatedAt(LocalDateTime.now());
-        return toView(userRepository.save(user));
+        UserView view = toView(userRepository.save(user));
+        // 密码被重置或账号被禁用后，吊销该用户全部旧 token
+        if (credentialsChanged || !newEnabled) {
+            tokenStore.revokeByUser(user.getId());
+        }
+        return view;
     }
 
     public void delete(Long id) {
@@ -159,6 +171,8 @@ public class UserService {
             throw new IllegalArgumentException("不能删除最后一个启用的管理员");
         }
         userRepository.delete(user);
+        // 删除用户后吊销其全部 token
+        tokenStore.revokeByUser(id);
     }
 
     private User findById(Long id) {

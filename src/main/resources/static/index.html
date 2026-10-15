@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>项目全周期管理</title>
-  <link rel="stylesheet" href="css/style.css?v=20260827-8">
+  <link rel="stylesheet" href="css/style.css?v=20261015-1">
   <script>
     if (!localStorage.getItem('bugclose_token') && !location.pathname.endsWith('/login.html')) {
       const next = encodeURIComponent(location.pathname + location.search + location.hash);
@@ -530,6 +530,29 @@
         <button type="button" id="btnDetailEdit" class="btn">编辑</button>
         <button type="button" id="btnDetailClose" class="btn btn-primary">关闭</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 强制修改密码弹窗（默认口令首登；不可关闭，改密成功后自动消失） -->
+  <div id="pwdMask" class="modal-mask">
+    <div class="modal modal-sm">
+      <h2>请修改初始密码</h2>
+      <p class="modal-hint">为了账号安全，首次登录需要设置新密码。</p>
+      <form id="pwdForm">
+        <label>原密码
+          <input type="password" id="pwdOld" required maxlength="100" autocomplete="current-password" placeholder="输入当前密码">
+        </label>
+        <label>新密码（至少 6 位）
+          <input type="password" id="pwdNew" required minlength="6" maxlength="100" autocomplete="new-password" placeholder="输入新密码">
+        </label>
+        <label>确认新密码
+          <input type="password" id="pwdConfirm" required minlength="6" maxlength="100" autocomplete="new-password" placeholder="再次输入新密码">
+        </label>
+        <div id="pwdMessage" class="form-message"></div>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">确认修改</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -1069,7 +1092,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=20260827-home1"></script>
+  <script src="js/app.js?v=20261015-1"></script>
 </body>
 </html>
 

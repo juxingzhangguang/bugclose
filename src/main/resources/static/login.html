@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>&#39033;&#30446;&#20840;&#21608;&#26399;&#31649;&#29702; - &#30331;&#24405;</title>
-  <link rel="stylesheet" href="css/style.css?v=20260827-1">
+  <link rel="stylesheet" href="css/style.css?v=20261015-1">
   <style>
     :root {
       --ink: #102a43;
@@ -19,14 +19,22 @@
       display: grid;
       place-items: center;
       padding: 28px;
-      background: #16324f url('images/login-bg.png') center / cover no-repeat fixed;
+      background:
+        radial-gradient(1100px 550px at 85% -10%, rgba(59, 130, 246, 0.32), transparent 60%),
+        radial-gradient(850px 480px at -10% 108%, rgba(14, 165, 233, 0.22), transparent 55%),
+        linear-gradient(160deg, #12263f 0%, #16324f 48%, #0b1a2e 100%);
       color: var(--ink);
     }
     body.auth-page::before {
       content: '';
       position: fixed;
       inset: 0;
-      background: rgba(15, 35, 60, 0.18);
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+      background-size: 46px 46px;
+      mask-image: radial-gradient(ellipse 78% 68% at 50% 42%, #000 35%, transparent 100%);
+      -webkit-mask-image: radial-gradient(ellipse 78% 68% at 50% 42%, #000 35%, transparent 100%);
       pointer-events: none;
     }
     .auth-shell {
@@ -158,8 +166,8 @@
           <input type="password" id="loginPassword" required maxlength="100" autocomplete="current-password" placeholder="&#36755;&#20837;&#23494;&#30721;">
         </label>
         <label class="auth-remember">
-          <input type="checkbox" id="rememberPassword">
-          <span>&#35760;&#20303;&#23494;&#30721;&#65288;&#20165;&#27492;&#35774;&#22791;&#65289;</span>
+          <input type="checkbox" id="rememberUsername">
+          <span>&#35760;&#20303;&#29992;&#25143;&#21517;&#65288;&#20165;&#27492;&#35774;&#22791;&#65289;</span>
         </label>
         <div class="auth-actions">
           <button type="submit" class="btn btn-primary">&#30331;&#24405;</button>
@@ -172,12 +180,11 @@
   <script>
     const TOKEN_KEY = 'bugclose_token';
     const REMEMBERED_USERNAME_KEY = 'bugclose_remembered_username';
-    const REMEMBERED_PASSWORD_KEY = 'bugclose_remembered_password';
     const LOGIN_API = '/api/auth/login';
 
     const usernameEl = document.getElementById('loginUsername');
     const passwordEl = document.getElementById('loginPassword');
-    const rememberEl = document.getElementById('rememberPassword');
+    const rememberEl = document.getElementById('rememberUsername');
     const messageEl = document.getElementById('loginMessage');
     const getToken = () => localStorage.getItem(TOKEN_KEY);
     const setToken = (token) => {
@@ -187,19 +194,17 @@
     const getNextUrl = () => {
       const params = new URLSearchParams(location.search);
       const next = params.get('next');
-      return next && next.startsWith('/') ? next : '/';
+      // 仅允许站内相对路径；拒绝 "//evil.com" 这类协议相对跳转
+      return next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
     };
     const showMessage = (msg) => { messageEl.textContent = msg || ''; };
-    const clearRememberedPassword = () => {
-      localStorage.removeItem(REMEMBERED_USERNAME_KEY);
-      localStorage.removeItem(REMEMBERED_PASSWORD_KEY);
-    };
+
+    // 安全整改：历史版本曾明文存密码，这里统一清理，只保留用户名
+    localStorage.removeItem('bugclose_remembered_password');
 
     const rememberedUsername = localStorage.getItem(REMEMBERED_USERNAME_KEY);
-    const rememberedPassword = localStorage.getItem(REMEMBERED_PASSWORD_KEY);
-    if (rememberedUsername && rememberedPassword) {
+    if (rememberedUsername) {
       usernameEl.value = rememberedUsername;
-      passwordEl.value = rememberedPassword;
       rememberEl.checked = true;
     }
 
@@ -228,9 +233,8 @@
         }
         if (rememberEl.checked) {
           localStorage.setItem(REMEMBERED_USERNAME_KEY, username);
-          localStorage.setItem(REMEMBERED_PASSWORD_KEY, password);
         } else {
-          clearRememberedPassword();
+          localStorage.removeItem(REMEMBERED_USERNAME_KEY);
         }
         setToken(data.token);
         location.replace(getNextUrl());
@@ -239,7 +243,8 @@
       }
     });
 
-    usernameEl.focus();
+    // 已记住用户名时直接聚焦密码框
+    (rememberedUsername ? passwordEl : usernameEl).focus();
   </script>
 </body>
 </html>

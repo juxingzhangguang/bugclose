@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.time.LocalDateTime;
 
@@ -16,7 +17,8 @@ import java.time.LocalDateTime;
  * 需求实体
  */
 @Entity
-@Table(name = "requirements")
+@Table(name = "requirements", uniqueConstraints = @UniqueConstraint(
+        name = "uq_requirements_project_seq", columnNames = {"project_id", "seq"}))
 public class Requirement {
 
     @Id

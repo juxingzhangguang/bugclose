@@ -40,7 +40,7 @@ public class AuthService {
                 ? Set.of() : userRepository.findBoundProjectIds(user.getId());
         return new LoginResult(token, user.getId(), user.getUsername(),
                 user.getDisplayName(), user.getRole(),
-                User.ROLE_ADMIN.equals(user.getRole()), bound);
+                User.ROLE_ADMIN.equals(user.getRole()), bound, user.isMustChangePassword());
     }
 
     public void logout(String token) {
@@ -68,11 +68,41 @@ public class AuthService {
                 ? Set.of() : userRepository.findBoundProjectIds(user.getId());
         return new LoginResult(null, user.getId(), user.getUsername(),
                 user.getDisplayName(), user.getRole(),
-                User.ROLE_ADMIN.equals(user.getRole()), bound);
+                User.ROLE_ADMIN.equals(user.getRole()), bound, user.isMustChangePassword());
+    }
+
+    /**
+     * 当前用户修改自己的密码：校验原密码，更新后吊销该用户全部旧 token 并签发新 token。
+     * 同时清除「必须修改密码」标记（首次登录强制改密流程用）。
+     *
+     * @return 新签发的 token（前端替换本地 token，避免改密后立刻被踢出）
+     */
+    @Transactional
+    public String changePassword(String oldPassword, String newPassword) {
+        AuthContext.CurrentUser u = AuthContext.requireLoggedIn();
+        User user = userRepository.findById(u.id())
+                .orElseThrow(() -> new AccessDeniedException("用户不存在"));
+        if (!passwordEncoder.matches(oldPassword == null ? "" : oldPassword, user.getPassword())) {
+            throw new IllegalArgumentException("原密码错误");
+        }
+        if (newPassword == null || newPassword.length() < 6) {
+            throw new IllegalArgumentException("新密码至少 6 位");
+        }
+        if (passwordEncoder.matches(newPassword, user.getPassword())) {
+            throw new IllegalArgumentException("新密码不能与原密码相同");
+        }
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(false);
+        user.setUpdatedAt(java.time.LocalDateTime.now());
+        userRepository.save(user);
+        // 吊销旧 token（含可能泄露的），签发新 token 保持当前会话
+        tokenStore.revokeByUser(user.getId());
+        return tokenStore.issue(user.getId());
     }
 
     /** 登录/当前用户返回体 */
     public record LoginResult(String token, Long id, String username, String displayName,
-                              String role, boolean allProjects, Set<Long> allowedProjectIds) {
+                              String role, boolean allProjects, Set<Long> allowedProjectIds,
+                              boolean mustChangePassword) {
     }
 }

@@ -23,4 +23,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleBadRequest(IllegalArgumentException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
     }
+
+    @ExceptionHandler(LoginRateLimiter.LoginRateLimitException.class)
+    public ResponseEntity<Map<String, String>> handleRateLimited(LoginRateLimiter.LoginRateLimitException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("error", e.getMessage()));
+    }
 }

@@ -3,10 +3,14 @@ package com.bugclose.requirement;
 import com.bugclose.auth.AccessScope;
 import com.bugclose.project.ProjectRepository;
 import jakarta.persistence.criteria.Predicate;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -23,12 +27,16 @@ public class RequirementService {
     private final RequirementRepository requirementRepository;
     private final ProjectRepository projectRepository;
     private final AccessScope accessScope;
+    private final TransactionTemplate txTemplate;
 
     public RequirementService(RequirementRepository requirementRepository, ProjectRepository projectRepository,
-                              AccessScope accessScope) {
+                              AccessScope accessScope, PlatformTransactionManager txManager) {
         this.requirementRepository = requirementRepository;
         this.projectRepository = projectRepository;
         this.accessScope = accessScope;
+        // 序号分配走独立新事务：唯一约束冲突时仅回滚本次插入，外层可安全重试
+        this.txTemplate = new TransactionTemplate(txManager);
+        this.txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /** 条件查询：项目 / 状态 / 优先级 / 所属期 / 关键字（标题、模块） */
@@ -70,12 +78,23 @@ public class RequirementService {
         }
         accessScope.requireProjectOnWrite(req.getProjectId());
         req.setId(null);
-        req.setSeq(requirementRepository.findMaxSeqInProject(req.getProjectId()) + 1);
         if (req.getPriority() == null) req.setPriority(Requirement.ReqPriority.P2);
         if (req.getStatus() == null) req.setStatus(Requirement.ReqStatus.DRAFT);
-        req.setCreatedAt(LocalDateTime.now());
-        req.setUpdatedAt(LocalDateTime.now());
-        return requirementRepository.save(req);
+        // 唯一约束 (project_id, seq) 兜底并发：序号冲突时重查最大序号重试
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return txTemplate.execute(status -> {
+                    req.setSeq(requirementRepository.findMaxSeqInProject(req.getProjectId()) + 1);
+                    req.setCreatedAt(LocalDateTime.now());
+                    req.setUpdatedAt(LocalDateTime.now());
+                    return requirementRepository.save(req);
+                });
+            } catch (DataIntegrityViolationException e) {
+                if (attempt >= 3) {
+                    throw e;
+                }
+            }
+        }
     }
 
     public Requirement update(Long id, Requirement changes) {

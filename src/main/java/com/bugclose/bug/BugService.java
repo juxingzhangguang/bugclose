@@ -3,10 +3,14 @@ package com.bugclose.bug;
 import com.bugclose.auth.AccessDeniedException;
 import com.bugclose.auth.AccessScope;
 import jakarta.persistence.criteria.Predicate;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -24,10 +28,15 @@ public class BugService {
 
     private final BugRepository bugRepository;
     private final AccessScope accessScope;
+    private final TransactionTemplate txTemplate;
 
-    public BugService(BugRepository bugRepository, AccessScope accessScope) {
+    public BugService(BugRepository bugRepository, AccessScope accessScope,
+                      PlatformTransactionManager txManager) {
         this.bugRepository = bugRepository;
         this.accessScope = accessScope;
+        // 序号分配走独立新事务：唯一约束冲突时仅回滚本次插入，外层可安全重试
+        this.txTemplate = new TransactionTemplate(txManager);
+        this.txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /** 条件查询：项目/状态/严重程度/优先级/处理人可选，关键字模糊匹配标题和描述 */
@@ -78,13 +87,24 @@ public class BugService {
         validateRequired(bug);
         accessScope.requireProjectOnWrite(bug.getProjectId());
         bug.setId(null);
-        bug.setSeq(bugRepository.findMaxSeqInProject(bug.getProjectId()) + 1);
-        bug.setCreatedAt(LocalDateTime.now());
-        bug.setUpdatedAt(LocalDateTime.now());
         if (bug.getStatus() == null) {
             bug.setStatus(Bug.BugStatus.NEW);
         }
-        return bugRepository.save(bug);
+        // 唯一约束 (project_id, seq) 兜底并发：序号冲突时重查最大序号重试
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return txTemplate.execute(status -> {
+                    bug.setSeq(bugRepository.findMaxSeqInProject(bug.getProjectId()) + 1);
+                    bug.setCreatedAt(LocalDateTime.now());
+                    bug.setUpdatedAt(LocalDateTime.now());
+                    return bugRepository.save(bug);
+                });
+            } catch (DataIntegrityViolationException e) {
+                if (attempt >= 3) {
+                    throw e;
+                }
+            }
+        }
     }
 
     public Bug update(Long id, Bug changes) {

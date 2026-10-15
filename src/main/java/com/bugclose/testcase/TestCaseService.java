@@ -2,10 +2,14 @@ package com.bugclose.testcase;
 
 import com.bugclose.auth.AccessScope;
 import jakarta.persistence.criteria.Predicate;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -23,10 +27,15 @@ public class TestCaseService {
 
     private final TestCaseRepository testCaseRepository;
     private final AccessScope accessScope;
+    private final TransactionTemplate txTemplate;
 
-    public TestCaseService(TestCaseRepository testCaseRepository, AccessScope accessScope) {
+    public TestCaseService(TestCaseRepository testCaseRepository, AccessScope accessScope,
+                           PlatformTransactionManager txManager) {
         this.testCaseRepository = testCaseRepository;
         this.accessScope = accessScope;
+        // 序号分配走独立新事务：唯一约束冲突时仅回滚本次插入，外层可安全重试
+        this.txTemplate = new TransactionTemplate(txManager);
+        this.txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /** 条件查询：项目 / 执行状态 / 优先级 / 关键字（标题、模块） */
@@ -64,12 +73,23 @@ public class TestCaseService {
         validateRequired(testCase);
         accessScope.requireProjectOnWrite(testCase.getProjectId());
         testCase.setId(null);
-        testCase.setSeq(testCaseRepository.findMaxSeqInProject(testCase.getProjectId()) + 1);
         if (testCase.getPriority() == null) testCase.setPriority(TestCase.CasePriority.P2);
         testCase.setStatus(TestCase.ExecStatus.NOT_RUN);
-        testCase.setCreatedAt(LocalDateTime.now());
-        testCase.setUpdatedAt(LocalDateTime.now());
-        return testCaseRepository.save(testCase);
+        // 唯一约束 (project_id, seq) 兜底并发：序号冲突时重查最大序号重试
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return txTemplate.execute(status -> {
+                    testCase.setSeq(testCaseRepository.findMaxSeqInProject(testCase.getProjectId()) + 1);
+                    testCase.setCreatedAt(LocalDateTime.now());
+                    testCase.setUpdatedAt(LocalDateTime.now());
+                    return testCaseRepository.save(testCase);
+                });
+            } catch (DataIntegrityViolationException e) {
+                if (attempt >= 3) {
+                    throw e;
+                }
+            }
+        }
     }
 
     public TestCase update(Long id, TestCase changes) {

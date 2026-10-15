@@ -3,7 +3,9 @@ package com.bugclose.project;
 import com.bugclose.auth.AccessScope;
 import com.bugclose.auth.AuthContext;
 import com.bugclose.bug.BugRepository;
+import com.bugclose.doc.DocumentRepository;
 import com.bugclose.requirement.RequirementRepository;
+import com.bugclose.testcase.TestCaseRepository;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,7 +15,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 项目业务逻辑：增删改查，删除前校验是否仍有关联 Bug。
+ * 项目业务逻辑：增删改查，删除前校验是否仍有关联 Bug/需求/用例/文档。
  * 项目 CRUD 为管理员专用；列表按当前用户可见范围过滤（普通用户只看到绑定项目）。
  */
 @Service
@@ -23,13 +25,19 @@ public class ProjectService {
     private final ProjectRepository projectRepository;
     private final BugRepository bugRepository;
     private final RequirementRepository requirementRepository;
+    private final TestCaseRepository testCaseRepository;
+    private final DocumentRepository documentRepository;
     private final AccessScope accessScope;
 
     public ProjectService(ProjectRepository projectRepository, BugRepository bugRepository,
-                          RequirementRepository requirementRepository, AccessScope accessScope) {
+                          RequirementRepository requirementRepository,
+                          TestCaseRepository testCaseRepository,
+                          DocumentRepository documentRepository, AccessScope accessScope) {
         this.projectRepository = projectRepository;
         this.bugRepository = bugRepository;
         this.requirementRepository = requirementRepository;
+        this.testCaseRepository = testCaseRepository;
+        this.documentRepository = documentRepository;
         this.accessScope = accessScope;
     }
 
@@ -116,6 +124,16 @@ public class ProjectService {
         if (reqCount > 0) {
             throw new IllegalStateException(
                     "项目「" + project.getName() + "」下还有 " + reqCount + " 个需求，请先处理后再删除");
+        }
+        long caseCount = testCaseRepository.countByProjectId(id);
+        if (caseCount > 0) {
+            throw new IllegalStateException(
+                    "项目「" + project.getName() + "」下还有 " + caseCount + " 个测试用例，请先处理后再删除");
+        }
+        long docCount = documentRepository.countByProjectId(id);
+        if (docCount > 0) {
+            throw new IllegalStateException(
+                    "项目「" + project.getName() + "」下还有 " + docCount + " 个文档，请先处理后再删除");
         }
         projectRepository.deleteById(id);
     }

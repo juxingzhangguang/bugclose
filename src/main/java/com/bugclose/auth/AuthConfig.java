@@ -6,8 +6,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 /**
- * 认证配置：BCrypt 编码器 Bean、AuthFilter 注册（仅作用于 /api/**）。
- * 静态资源、/uploads/** 不经过 filter，行为保持不变。
+ * 认证配置：BCrypt 编码器 Bean、AuthFilter 注册（作用于 /api/** 与 /uploads/**）。
+ * 其他静态资源（页面、css、js）不经过 filter，行为保持不变。
  */
 @Configuration
 public class AuthConfig {
@@ -25,7 +25,7 @@ public class AuthConfig {
     @Bean
     public FilterRegistrationBean<AuthFilter> authFilterRegistration(AuthFilter authFilter) {
         FilterRegistrationBean<AuthFilter> reg = new FilterRegistrationBean<>(authFilter);
-        reg.addUrlPatterns("/api/*");
+        reg.addUrlPatterns("/api/*", "/uploads/*");
         reg.setOrder(1);
         return reg;
     }

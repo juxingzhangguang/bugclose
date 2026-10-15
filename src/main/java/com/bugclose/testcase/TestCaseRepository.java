@@ -14,4 +14,7 @@ public interface TestCaseRepository extends JpaRepository<TestCase, Long>, JpaSp
     @Query("select coalesce(max(t.seq), 0) from TestCase t "
             + "where (:projectId is null and t.projectId is null) or t.projectId = :projectId")
     long findMaxSeqInProject(@Param("projectId") Long projectId);
+
+    /** 统计项目下的用例数（删除项目前校验用） */
+    long countByProjectId(Long projectId);
 }

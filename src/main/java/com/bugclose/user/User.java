@@ -51,6 +51,10 @@ public class User {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    /** 是否必须在下次登录后修改密码（默认管理员首登强制改密用） */
+    @Column(nullable = false)
+    private boolean mustChangePassword = false;
+
     /** 绑定的项目集合（普通用户只能访问这些项目的数据；管理员忽略此集合，看全部） */
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
@@ -76,6 +80,8 @@ public class User {
     public void setRole(String role) { this.role = role; }
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
+    public boolean isMustChangePassword() { return mustChangePassword; }
+    public void setMustChangePassword(boolean mustChangePassword) { this.mustChangePassword = mustChangePassword; }
     public Set<Project> getProjects() { return projects; }
     public void setProjects(Set<Project> projects) { this.projects = projects; }
     public LocalDateTime getCreatedAt() { return createdAt; }

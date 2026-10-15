@@ -714,6 +714,13 @@ function parseImages(imagesJson) {
   }
 }
 
+/* /uploads/** 已加认证：<img> 无法带 Authorization 头，改为 URL 附 token 参数 */
+function authImageUrl(url) {
+  if (!url || !url.startsWith('/uploads/')) return url;
+  const token = getToken();
+  return token ? `${url}?token=${encodeURIComponent(token)}` : url;
+}
+
 function setFormImages(urls) {
   formImages = [...urls];
   renderImageGrid();
@@ -727,7 +734,7 @@ function renderImageGrid() {
     const item = document.createElement('div');
     item.className = 'image-item';
     item.innerHTML = `
-      <img src="${url}" alt="bug图片">
+      <img src="${authImageUrl(url)}" alt="bug图片">
       <button type="button" class="image-remove" data-url="${url}" title="移除">×</button>`;
     grid.insertBefore(item, addBox);
   }
@@ -796,7 +803,7 @@ async function openDetailModal(id) {
     const images = parseImages(bug.images);
     const imagesHtml = images.length
       ? `<div class="image-grid">${images
-          .map((url) => `<div class="image-item"><img src="${url}" alt="bug图片"></div>`)
+          .map((url) => `<div class="image-item"><img src="${authImageUrl(url)}" alt="bug图片"></div>`)
           .join('')}</div>`
       : '<span class="detail-empty">无</span>';
     $('detailBody').innerHTML = `
@@ -2354,6 +2361,9 @@ async function init() {
   try {
     currentUser = await request(`${AUTH_API}/me`);
     applyCurrentUser();
+    if (currentUser.mustChangePassword) {
+      openForcePwdModal();
+    }
     await refreshProjects();
     await loadRoles();
     loadUsers();
@@ -2361,6 +2371,44 @@ async function init() {
     redirectToLogin();
   }
 }
+
+/* ===== 强制修改初始密码（首登） ===== */
+function openForcePwdModal() {
+  $('pwdOld').value = '';
+  $('pwdNew').value = '';
+  $('pwdConfirm').value = '';
+  $('pwdMessage').textContent = '';
+  openModal($('pwdMask'));
+}
+
+$('pwdForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const oldPassword = $('pwdOld').value;
+  const newPassword = $('pwdNew').value;
+  const confirm = $('pwdConfirm').value;
+  const msgEl = $('pwdMessage');
+  msgEl.textContent = '';
+  if (newPassword.length < 6) {
+    msgEl.textContent = '新密码至少 6 位';
+    return;
+  }
+  if (newPassword !== confirm) {
+    msgEl.textContent = '两次输入的新密码不一致';
+    return;
+  }
+  try {
+    const data = await request(`${AUTH_API}/change-password`, {
+      method: 'POST',
+      body: JSON.stringify({ oldPassword, newPassword }),
+    });
+    if (data && data.token) setToken(data.token); // 改密后旧 token 已全部吊销，换新 token
+    currentUser.mustChangePassword = false;
+    closeModal($('pwdMask'));
+    showToast('密码修改成功');
+  } catch (err) {
+    msgEl.textContent = err.message || '修改失败';
+  }
+});
 
 function redirectToLogin() {
   const next = encodeURIComponent(location.pathname + location.search + location.hash);

@@ -57,4 +57,9 @@ public class TokenStore {
             store.remove(token);
         }
     }
+
+    /** 吊销某用户的全部 token：改密、禁用、删除用户时调用，防止旧 token 继续可用 */
+    public void revokeByUser(long userId) {
+        store.entrySet().removeIf(e -> e.getValue().userId() == userId);
+    }
 }
