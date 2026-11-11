@@ -1,0 +1,101 @@
+# -*- coding: utf-8 -*-
+"""统计看板模块用例（/api/dashboard/statistics）。"""
+from ._base import C, COMMON_PRE
+
+M = "统计看板"
+A = "tests/test_dashboard.py::"
+PRE = COMMON_PRE + "；看板为全局聚合、无项目入参，断言采用「快照→操作→快照」增量比对"
+EMPTY_PRE = "存在未绑定任何项目的普通用户，并已登录"
+
+CASES = [
+    # ---------------------------------------------------------------- 结构与枚举
+    C("DASH-001", M, "看板返回四维度且字段齐全", PRE,
+      "GET /api/dashboard/statistics",
+      "200；顶层恰含 bug/testCase/requirement/doc；bug 含 total/byStatus/bySeverity/byAssignee；"
+      "testCase 含 total/byStatus/executed/passRate；requirement 含 total/byStatus；doc 含 total/byCategory",
+      "P0", "正常", A + "test_statistics_structure"),
+    C("DASH-002", M, "缺陷状态与严重度桶覆盖全枚举", PRE,
+      "GET /api/dashboard/statistics，检查 bug.byStatus / bug.bySeverity",
+      "byStatus 键集 = NEW/IN_PROGRESS/RESOLVED/CLOSED；bySeverity 键集 = CRITICAL/HIGH/MEDIUM/LOW；"
+      "值为非负整数；两个桶各自求和均等于 total（0 值桶也要出现）",
+      "P0", "正常", A + "test_bug_enum_buckets_complete"),
+    C("DASH-003", M, "用例执行状态桶覆盖全枚举", PRE,
+      "GET /api/dashboard/statistics，检查 testCase.byStatus",
+      "键集 = NOT_RUN/PASS/FAIL/BLOCKED；求和等于 total", "P0", "正常", A + "test_testcase_enum_buckets_complete"),
+    C("DASH-004", M, "需求状态桶覆盖全枚举", PRE,
+      "GET /api/dashboard/statistics，检查 requirement.byStatus",
+      "键集 = DRAFT/REVIEWING/APPROVED/IN_PROGRESS/COMPLETED/REJECTED；求和等于 total",
+      "P1", "正常", A + "test_requirement_enum_buckets_complete"),
+    C("DASH-005", M, "文档分类桶覆盖全枚举", PRE,
+      "GET /api/dashboard/statistics，检查 doc.byCategory",
+      "键集 = REQUIREMENT/DESIGN/TEST/MANUAL/MEETING/OTHER；求和等于 total",
+      "P1", "正常", A + "test_doc_enum_buckets_complete"),
+    C("DASH-006", M, "四维度 total 与列表接口一致", PRE,
+      "GET /api/dashboard/statistics；再分别 GET /api/bugs、/api/testcases、/api/requirements、/api/docs",
+      "每个维度的 total 等于对应列表接口返回的条数", "P0", "正常", A + "test_totals_match_list_endpoints"),
+    # ---------------------------------------------------------------- 缺陷维度
+    C("DASH-007", M, "新增缺陷后总数与状态桶递增", PRE,
+      "记录快照 → POST /api/bugs 创建 status=NEW 的缺陷 → 再取快照",
+      "bug.total +1；byStatus.NEW +1", "P0", "正常", A + "test_bug_total_and_status_increment"),
+    C("DASH-008", M, "新增缺陷后严重度桶递增", PRE,
+      "记录快照 → POST /api/bugs 创建 severity=CRITICAL 的缺陷 → 再取快照",
+      "bySeverity.CRITICAL +1；total +1", "P1", "正常", A + "test_bug_severity_increment"),
+    C("DASH-009", M, "未指派负责人归入「未指派」桶", PRE,
+      "记录 byAssignee → 分别创建 assignee=null、assignee=\"   \"、assignee=指名 的三条缺陷 → 再取快照",
+      "「未指派」桶 +2（null 与纯空格同等处理）；指名负责人单独成桶 +1",
+      "P1", "边界", A + "test_bug_assignee_bucket"),
+    C("DASH-010", M, "删除缺陷后统计回落", PRE,
+      "记录快照 → 创建 severity=LOW 的缺陷 → 确认 total +1 → DELETE /api/bugs/{id} → 再取快照",
+      "total 与 bySeverity.LOW 均回到初始值", "P1", "正常", A + "test_bug_delete_decrements"),
+    # ---------------------------------------------------------------- 用例维度
+    C("DASH-011", M, "executed 排除未执行用例", PRE,
+      "GET /api/dashboard/statistics，校验 testCase.executed 与 total、byStatus.NOT_RUN 的关系",
+      "executed = total - NOT_RUN（PASS/FAIL/BLOCKED 都算已执行）", "P0", "正常", A + "test_executed_excludes_not_run"),
+    C("DASH-012", M, "通过率计算口径正确", PRE,
+      "GET /api/testcases 全量重算 PASS 数与 executed，再与看板 passRate 比对",
+      "passRate = round(PASS×1000/executed)/10（Java Math.round 半进位）；executed=0 时为 0",
+      "P0", "正常", A + "test_pass_rate_formula"),
+    C("DASH-013", M, "执行用例后通过率分子分母同步变化", PRE,
+      "记录快照 → 创建用例（NOT_RUN）→ 取快照 → PUT /api/testcases/{id}/execute 置 PASS → 再取快照",
+      "创建后 total +1、NOT_RUN +1、executed 不变；执行后 PASS +1、NOT_RUN -1、executed +1",
+      "P0", "正常", A + "test_execute_case_updates_pass_rate"),
+    C("DASH-014", M, "FAIL/BLOCKED 计入已执行但不计入通过", PRE,
+      "记录快照 → 创建两条用例并分别执行 FAIL、BLOCKED → 再取快照",
+      "executed +2；FAIL +1、BLOCKED +1；PASS 不变", "P1", "边界", A + "test_fail_and_blocked_count_as_executed"),
+    # ---------------------------------------------------------------- 需求与文档
+    C("DASH-015", M, "新增需求后总数与状态桶递增", PRE,
+      "记录快照 → POST /api/requirements 创建 status=APPROVED 的需求 → 再取快照",
+      "requirement.total +1；byStatus.APPROVED +1", "P1", "正常", A + "test_requirement_increment"),
+    C("DASH-016", M, "新增文档后总数与分类桶递增", PRE,
+      "记录快照 → POST /api/docs 上传 category=DESIGN 的文档 → 再取快照",
+      "doc.total +1；byCategory.DESIGN +1", "P1", "正常", A + "test_doc_increment_by_category"),
+    # ---------------------------------------------------------------- 数据可见性
+    C("DASH-017", M, "零绑定用户看板全为 0", EMPTY_PRE,
+      "以该用户身份 GET /api/dashboard/statistics",
+      "200；四维度 total 均为 0；executed=0；passRate=0（不得除零异常）；byAssignee={}",
+      "P0", "权限", A + "test_zero_bound_user_sees_all_zero"),
+    C("DASH-018", M, "普通用户看板只统计自身可见数据", "用户 1 已绑定项目 A",
+      "以用户 1 身份取看板，再分别取四个列表接口条数比对",
+      "每个维度 total 等于该用户列表接口条数（与业务接口可见性一致）",
+      "P0", "权限", A + "test_user_stats_match_own_visible_lists"),
+    C("DASH-019", M, "未绑定项目数据不计入用户看板", "用户 1 绑定 A、不绑定 B",
+      "记录用户 1 与管理员快照 → 在 B 下创建缺陷/用例/需求 → 再取双方快照",
+      "用户 1 四维度 total 全部不变；管理员 bug/testCase/requirement 各 +1",
+      "P0", "权限", A + "test_foreign_project_data_not_counted"),
+    C("DASH-020", M, "未关联项目数据对普通用户不可见", "用户 1 已绑定项目 A",
+      "记录双方快照 → 管理员创建 projectId=null 的缺陷 → 再取双方快照",
+      "管理员 bug.total +1；用户 1 bug.total 不变", "P0", "权限", A + "test_unassigned_data_invisible_to_user"),
+    C("DASH-021", M, "绑定项目数据计入用户看板", "用户 1 已绑定项目 A",
+      "记录用户 1 快照 → 管理员在 A 下创建缺陷 → 再取快照",
+      "用户 1 bug.total +1", "P0", "权限", A + "test_bound_project_data_counted_for_user"),
+    # ---------------------------------------------------------------- 协议
+    C("DASH-022", M, "未登录访问看板", "服务已启动",
+      "GET /api/dashboard/statistics，不带 token",
+      "401；{\"error\":\"未登录或登录已过期\"}", "P0", "安全", A + "test_dashboard_requires_auth"),
+    C("DASH-023", M, "看板只支持 GET", PRE,
+      "POST /api/dashboard/statistics；DELETE /api/dashboard/statistics",
+      "两者均 405", "P3", "异常", A + "test_dashboard_get_only"),
+    C("DASH-024", M, "看板忽略无关查询参数", PRE,
+      "GET /api/dashboard/statistics?projectId=99999999&page=2&size=1，与无参结果比对",
+      "两次响应完全一致（看板无项目/分页入参）", "P3", "边界", A + "test_dashboard_ignores_query_params"),
+]
