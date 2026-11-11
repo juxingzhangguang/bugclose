@@ -23,6 +23,9 @@ public class DataSeeder {
 
     private static final Logger log = LoggerFactory.getLogger(DataSeeder.class);
 
+    /** 内置默认管理员口令：任何账号使用它都视为弱口令，登录时强制改密 */
+    public static final String DEFAULT_ADMIN_PASSWORD = "admin123";
+
     @Bean
     CommandLineRunner seedDefaultRoles(RoleRepository roleRepository) {
         return args -> {
@@ -59,7 +62,7 @@ public class DataSeeder {
                 // 兼容旧库：admin 仍在用默认口令时，补上强制改密标记
                 userRepository.findByUsername("admin").ifPresent(admin -> {
                     if (!admin.isMustChangePassword()
-                            && encoder.matches("admin123", admin.getPassword())) {
+                            && encoder.matches(DEFAULT_ADMIN_PASSWORD, admin.getPassword())) {
                         admin.setMustChangePassword(true);
                         admin.setUpdatedAt(LocalDateTime.now());
                         userRepository.save(admin);
@@ -70,7 +73,7 @@ public class DataSeeder {
             }
             User admin = new User();
             admin.setUsername("admin");
-            admin.setPassword(encoder.encode("admin123"));
+            admin.setPassword(encoder.encode(DEFAULT_ADMIN_PASSWORD));
             admin.setDisplayName("管理员");
             admin.setRole(User.ROLE_ADMIN);
             admin.setEnabled(true);

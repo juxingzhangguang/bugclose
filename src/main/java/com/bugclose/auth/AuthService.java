@@ -25,7 +25,7 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public LoginResult login(String username, String password) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("用户名或密码错误"));
@@ -35,12 +35,21 @@ public class AuthService {
         if (!passwordEncoder.matches(password, user.getPassword())) {
             throw new IllegalArgumentException("用户名或密码错误");
         }
+        boolean mustChange = user.isMustChangePassword();
+        // 口令校验已通过，此时明文等于内置默认口令 ⇒ 库里存的就是默认口令。
+        // 登录时即时打标，避免「启动后才把密码改回默认值」漏掉强制改密。
+        if (!mustChange && DataSeeder.DEFAULT_ADMIN_PASSWORD.equals(password)) {
+            user.setMustChangePassword(true);
+            user.setUpdatedAt(java.time.LocalDateTime.now());
+            userRepository.save(user);
+            mustChange = true;
+        }
         String token = tokenStore.issue(user.getId());
         Set<Long> bound = User.ROLE_ADMIN.equals(user.getRole())
                 ? Set.of() : userRepository.findBoundProjectIds(user.getId());
         return new LoginResult(token, user.getId(), user.getUsername(),
                 user.getDisplayName(), user.getRole(),
-                User.ROLE_ADMIN.equals(user.getRole()), bound, user.isMustChangePassword());
+                User.ROLE_ADMIN.equals(user.getRole()), bound, mustChange);
     }
 
     public void logout(String token) {
@@ -72,13 +81,12 @@ public class AuthService {
     }
 
     /**
-     * 当前用户修改自己的密码：校验原密码，更新后吊销该用户全部旧 token 并签发新 token。
+     * 当前用户修改自己的密码：校验原密码，更新后吊销该用户全部 token（含本次请求的 token）。
      * 同时清除「必须修改密码」标记（首次登录强制改密流程用）。
-     *
-     * @return 新签发的 token（前端替换本地 token，避免改密后立刻被踢出）
+     * <p>改密后不续签 token，前端必须退出并用新密码重新登录。
      */
     @Transactional
-    public String changePassword(String oldPassword, String newPassword) {
+    public void changePassword(String oldPassword, String newPassword) {
         AuthContext.CurrentUser u = AuthContext.requireLoggedIn();
         User user = userRepository.findById(u.id())
                 .orElseThrow(() -> new AccessDeniedException("用户不存在"));
@@ -92,12 +100,12 @@ public class AuthService {
             throw new IllegalArgumentException("新密码不能与原密码相同");
         }
         user.setPassword(passwordEncoder.encode(newPassword));
-        user.setMustChangePassword(false);
+        // 改成的仍是内置默认口令 ⇒ 保持强制改密，下次登录继续要求修改
+        user.setMustChangePassword(DataSeeder.DEFAULT_ADMIN_PASSWORD.equals(newPassword));
         user.setUpdatedAt(java.time.LocalDateTime.now());
         userRepository.save(user);
-        // 吊销旧 token（含可能泄露的），签发新 token 保持当前会话
+        // 全部旧 token 失效（含可能泄露的与当前会话），要求重新登录
         tokenStore.revokeByUser(user.getId());
-        return tokenStore.issue(user.getId());
     }
 
     /** 登录/当前用户返回体 */

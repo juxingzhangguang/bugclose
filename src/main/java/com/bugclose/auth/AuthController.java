@@ -10,8 +10,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.servlet.http.HttpServletRequest;
 
-import java.util.Map;
-
 /**
  * 认证 REST API：登录、当前用户、登出
  */
@@ -42,11 +40,11 @@ public class AuthController {
         }
     }
 
-    /** 当前用户修改自己的密码（含首次登录强制改密）；成功后返回新 token */
+    /** 当前用户修改自己的密码（含首次登录强制改密）；成功后全部 token 失效，需重新登录 */
     @PostMapping("/change-password")
-    public Map<String, String> changePassword(@RequestBody ChangePasswordRequest req) {
-        String newToken = authService.changePassword(req.oldPassword(), req.newPassword());
-        return Map.of("token", newToken);
+    public ResponseEntity<Void> changePassword(@RequestBody ChangePasswordRequest req) {
+        authService.changePassword(req.oldPassword(), req.newPassword());
+        return ResponseEntity.noContent().<Void>build();
     }
 
     /** 当前登录用户信息（前端启动时校验 token 有效性） */

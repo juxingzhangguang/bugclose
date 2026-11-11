@@ -2397,18 +2397,23 @@ $('pwdForm').addEventListener('submit', async (e) => {
     return;
   }
   try {
-    const data = await request(`${AUTH_API}/change-password`, {
+    await request(`${AUTH_API}/change-password`, {
       method: 'POST',
       body: JSON.stringify({ oldPassword, newPassword }),
     });
-    if (data && data.token) setToken(data.token); // 改密后旧 token 已全部吊销，换新 token
-    currentUser.mustChangePassword = false;
-    closeModal($('pwdMask'));
-    showToast('密码修改成功');
+    // 改密成功后全部 token 已失效：退出系统，用新密码重新登录
+    forceReloginAfterPasswordChange();
   } catch (err) {
     msgEl.textContent = err.message || '修改失败';
   }
 });
+
+/* 修改密码后强制退出：清本地登录态并跳登录页（登录页据 msg 提示用新密码登录） */
+function forceReloginAfterPasswordChange() {
+  setToken(null);
+  currentUser = null;
+  location.replace(`${LOGIN_PAGE}?msg=pwdchanged`);
+}
 
 function redirectToLogin() {
   const next = encodeURIComponent(location.pathname + location.search + location.hash);
@@ -2608,6 +2613,11 @@ $('userForm').addEventListener('submit', async (e) => {
   try {
     if (id) {
       await request(`${USER_API}/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      // 管理员改的是自己的密码：后端已吊销本人 token，同样强制重新登录
+      if (Number(id) === currentUser.id && payload.password) {
+        forceReloginAfterPasswordChange();
+        return;
+      }
       showToast('更新成功');
     } else {
       await request(USER_API, { method: 'POST', body: JSON.stringify(payload) });

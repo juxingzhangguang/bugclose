@@ -2,6 +2,7 @@ package com.bugclose.user;
 
 import com.bugclose.auth.AccessScope;
 import com.bugclose.auth.AuthContext;
+import com.bugclose.auth.DataSeeder;
 import com.bugclose.auth.TokenStore;
 import com.bugclose.project.Project;
 import com.bugclose.project.ProjectRepository;
@@ -103,6 +104,8 @@ public class UserService {
         user.setId(null);
         user.setUsername(username);
         user.setPassword(passwordEncoder.encode(rawPassword));
+        // 初始口令若为内置默认值，同样要求首登改密
+        user.setMustChangePassword(DataSeeder.DEFAULT_ADMIN_PASSWORD.equals(rawPassword));
         if (user.getRole() == null) {
             user.setRole(User.ROLE_USER);
         }
@@ -144,7 +147,8 @@ public class UserService {
                 throw new IllegalArgumentException("密码至少 4 位");
             }
             user.setPassword(passwordEncoder.encode(rawPassword));
-            user.setMustChangePassword(false); // 管理员重置密码后不再要求首登改密
+            // 重置为内置默认口令时仍要求改密；设为其他密码则解除标记
+            user.setMustChangePassword(DataSeeder.DEFAULT_ADMIN_PASSWORD.equals(rawPassword));
             credentialsChanged = true;
         }
         user.setProjects(resolveProjects(projectIds));
